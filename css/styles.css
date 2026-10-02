@@ -6,6 +6,10 @@
     -webkit-tap-highlight-color: transparent;
 }
 
+[hidden] {
+    display: none !important;
+}
+
 body,
 html {
     width: 100%;
@@ -19,6 +23,12 @@ html {
     width: 100vw;
     height: 100vh;
     position: relative;
+    transition: opacity 0.35s ease;
+}
+
+/* Oculta el juego hasta que los sprites de la nube estén listos (evita parpadeos) */
+body.booting #app {
+    opacity: 0;
 }
 
 .screen {
@@ -31,12 +41,25 @@ html {
     display: flex;
 }
 
+/* Fondo personalizado: cubre toda el área, centrado y sin deformarse */
+.has-skin {
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
 /* --- MENÚ --- */
 #menuScreen {
-    background: #1e3a5f;
+    background-color: #1e3a5f;
     justify-content: center;
     align-items: center;
     flex-direction: column;
+}
+
+.menu-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 .game-title {
@@ -58,7 +81,7 @@ html {
     font-weight: bold;
     border-radius: 30px;
     border: 4px solid #fff;
-    background: #4dd2ff;
+    background-color: #4dd2ff;
     color: #000;
     cursor: pointer;
     box-shadow: 0 6px 0 #000;
@@ -70,6 +93,110 @@ html {
     box-shadow: 0 0 0 #000;
 }
 
+/* Botón JUGAR con sprite: la imagen ocupa todo el botón y conserva su proporción */
+.btn-primary.btn-sprite {
+    width: clamp(160px, 38vw, 340px);
+    max-height: 45vh;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    box-shadow: none;
+    color: transparent;
+    font-size: 0;
+}
+
+.btn-primary.btn-sprite:active {
+    transform: scale(0.95);
+    box-shadow: none;
+}
+
+/* --- SELECCIÓN DE MODOS --- */
+#modesScreen {
+    background-color: #1e3a5f;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 24px;
+    padding: 20px;
+}
+
+.modes-title {
+    font-size: 2.2rem;
+    color: #fff;
+    text-shadow: 3px 3px 0 #000;
+    text-align: center;
+}
+
+.modes-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 20px;
+}
+
+.mode-card {
+    width: 200px;
+    padding: 20px 16px;
+    font-family: inherit;
+    text-align: center;
+    background: #fff;
+    border: 4px solid #000;
+    border-radius: 20px;
+    box-shadow: 0 6px 0 #000;
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+
+.mode-card:active:not(:disabled) {
+    transform: translateY(6px);
+    box-shadow: 0 0 0 #000;
+}
+
+.mode-card .mode-icon {
+    display: block;
+    font-size: 2.4rem;
+    margin-bottom: 6px;
+}
+
+.mode-card h3 {
+    font-size: 1.3rem;
+    color: #000;
+}
+
+.mode-card p {
+    font-size: 0.85rem;
+    color: #666;
+    margin-top: 4px;
+}
+
+.mode-card.locked {
+    opacity: 0.55;
+    filter: grayscale(0.6);
+    cursor: not-allowed;
+}
+
+.btn-back {
+    padding: 8px 22px;
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: bold;
+    color: #000;
+    background: #4dd2ff;
+    border: 3px solid #fff;
+    border-radius: 20px;
+    box-shadow: 0 4px 0 #000;
+    cursor: pointer;
+}
+
+.btn-back:active {
+    transform: translateY(4px);
+    box-shadow: none;
+}
+
 /* --- JUEGO SPLIT-SCREEN --- */
 #gameScreen {
     flex-direction: row;
@@ -78,8 +205,9 @@ html {
 #gameZone {
     flex: 7;
     /* Ocupa el 70% del ancho */
-    background: #121826;
+    background-color: #121826;
     position: relative;
+    overflow: hidden;
 }
 
 #gameCanvas {
@@ -91,13 +219,14 @@ html {
 #uiPanel {
     flex: 3;
     /* Ocupa el 30% del ancho */
-    background: #e0f4fc;
+    background-color: #e0f4fc;
     border-left: 4px solid #000;
     padding: 20px;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 20px;
+    overflow-y: auto;
 }
 
 .ui-card {
@@ -123,19 +252,55 @@ html {
     color: #000;
 }
 
+/* --- VIDAS (5 slots de tamaño estándar) --- */
 #heartsRow {
+    --life-size: 36px;
     display: flex;
     justify-content: center;
     gap: 5px;
-    margin-top: 5px;
+    margin-top: 6px;
 }
 
-.heart-icon {
-    width: 20px;
-    height: 20px;
-    background: #ff3b5c;
+.life-slot {
+    flex: 1 1 0;
+    max-width: var(--life-size);
+    aspect-ratio: 1 / 1;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: contain;
+    /* El PNG se ajusta al cuadro sin deformarse */
+}
+
+/* Diseño base cuando no hay sprite */
+.life-slot.default {
+    background-color: #ff3b5c;
     border: 2px solid #000;
     border-radius: 50%;
+}
+
+/* Vida perdida: misma forma, atenuada y en gris */
+.life-slot.lost {
+    filter: grayscale(1) brightness(0.6);
+    opacity: 0.3;
+    transform: scale(0.8);
+}
+
+.life-slot.just-lost {
+    animation: lifePop 0.45s ease-out;
+}
+
+@keyframes lifePop {
+    0% {
+        transform: scale(1.5);
+        filter: none;
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(0.8);
+        filter: grayscale(1) brightness(0.6);
+        opacity: 0.3;
+    }
 }
 
 .cloud-box {
@@ -165,6 +330,7 @@ html {
     margin-top: auto;
     width: 100px;
     height: 100px;
+    flex-shrink: 0;
 }
 
 .mascot-placeholder {
@@ -178,4 +344,303 @@ html {
     justify-content: center;
     font-size: 3rem;
     box-shadow: 4px 4px 0 #000;
+}
+
+/* =============================================================
+   PANEL DE PERSONALIZACIÓN
+============================================================= */
+.admin-toggle {
+    position: fixed;
+    left: 8px;
+    bottom: 8px;
+    z-index: 900;
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+    line-height: 1;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.35);
+    border: none;
+    border-radius: 50%;
+    opacity: 0.12;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.admin-toggle:hover,
+.admin-toggle:focus-visible {
+    opacity: 0.85;
+}
+
+/* Durante la partida no estorba al jugador */
+body.playing .admin-toggle {
+    display: none;
+}
+
+.admin-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: none;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.65);
+}
+
+.admin-overlay.open {
+    display: flex;
+}
+
+.admin-sheet {
+    width: 100%;
+    max-width: 760px;
+    height: 100%;
+    overflow-y: auto;
+    padding: 16px;
+    color: #e8eefc;
+    background: #0f1626;
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    user-select: text;
+}
+
+.admin-sheet * {
+    user-select: auto;
+}
+
+.admin-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.admin-header h2 {
+    font-size: 1.3rem;
+}
+
+.admin-icon-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 1.1rem;
+    color: #fff;
+    background: #25304a;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.admin-note {
+    margin-bottom: 14px;
+    font-size: 0.9rem;
+    color: #9fb0d4;
+}
+
+.admin-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 360px;
+}
+
+.admin-form input {
+    padding: 10px 12px;
+    font-size: 1rem;
+    color: #fff;
+    background: #19233a;
+    border: 1px solid #33415f;
+    border-radius: 8px;
+}
+
+.admin-error {
+    min-height: 1.2em;
+    font-size: 0.85rem;
+    color: #ff7a8a;
+}
+
+.admin-userbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    color: #9fb0d4;
+}
+
+.admin-btn {
+    display: inline-block;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-align: center;
+    color: #fff;
+    background: #2b3a5c;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.admin-btn.primary {
+    background: #2f7df6;
+}
+
+.admin-btn.danger {
+    background: #7a2a38;
+}
+
+.admin-btn:disabled,
+.admin-btn:has(input:disabled) {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.slot-group {
+    margin-bottom: 22px;
+}
+
+.slot-group h3 {
+    padding-bottom: 6px;
+    margin-bottom: 10px;
+    font-size: 1rem;
+    color: #4dd2ff;
+    border-bottom: 1px solid #25304a;
+}
+
+.slot-row {
+    display: grid;
+    grid-template-columns: 64px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 10px;
+    margin-bottom: 8px;
+    background: #151e33;
+    border-radius: 10px;
+}
+
+.slot-row-all {
+    grid-template-columns: 1fr auto;
+    border: 1px dashed #33415f;
+}
+
+.slot-row.drag {
+    outline: 2px dashed #4dd2ff;
+    background: #1b2a4a;
+}
+
+.slot-thumb {
+    cursor: pointer;
+}
+
+.slot-row.busy {
+    opacity: 0.85;
+}
+
+/* Miniatura con cuadrícula para apreciar transparencias */
+.slot-thumb {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    overflow: hidden;
+    border-radius: 8px;
+    background-color: #fff;
+    background-image:
+        linear-gradient(45deg, #c9c9c9 25%, transparent 25%, transparent 75%, #c9c9c9 75%),
+        linear-gradient(45deg, #c9c9c9 25%, transparent 25%, transparent 75%, #c9c9c9 75%);
+    background-size: 12px 12px;
+    background-position: 0 0, 6px 6px;
+}
+
+.slot-preview {
+    position: absolute;
+    inset: 0;
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.slot-thumb.is-default::after {
+    content: 'Base';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #fff;
+    background: rgba(15, 22, 38, 0.8);
+}
+
+.slot-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.slot-label {
+    font-size: 0.95rem;
+}
+
+.slot-hint {
+    font-size: 0.75rem;
+    color: #8da0c8;
+}
+
+.slot-status {
+    min-height: 1em;
+    font-size: 0.78rem;
+    color: #cdd8f2;
+}
+
+.slot-status.ok {
+    color: #5be39a;
+}
+
+.slot-status.error {
+    color: #ff7a8a;
+}
+
+.slot-progress {
+    height: 4px;
+    overflow: hidden;
+    background: #25304a;
+    border-radius: 2px;
+}
+
+.slot-progress i {
+    display: block;
+    width: 0;
+    height: 100%;
+    background: #2f7df6;
+    transition: width 0.15s;
+}
+
+.slot-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+@media (max-width: 560px) {
+    .slot-row {
+        grid-template-columns: 56px 1fr;
+    }
+
+    .slot-row-all {
+        grid-template-columns: 1fr;
+    }
+
+    .slot-thumb {
+        width: 56px;
+        height: 56px;
+    }
+
+    .slot-actions {
+        grid-column: 1 / -1;
+        flex-direction: row;
+    }
+
+    .slot-actions .admin-btn {
+        flex: 1;
+    }
 }

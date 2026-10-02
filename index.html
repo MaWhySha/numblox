@@ -8,15 +8,38 @@
     <link rel="stylesheet" href="css/styles.css">
 </head>
 
-<body>
+<body class="booting">
     <div id="app">
         <!-- PANTALLA MENÚ PRINCIPAL -->
         <div id="menuScreen" class="screen active">
             <div class="menu-content">
                 <h1 class="game-title">NUMBLOX</h1>
                 <p class="subtitle">Aprende matemáticas jugando</p>
-                <button class="btn-primary" id="btnPlay">JUGAR</button>
+                <button class="btn-primary" id="btnPlay" aria-label="Jugar">JUGAR</button>
             </div>
+        </div>
+
+        <!-- PANTALLA INTERMEDIA: SELECCIÓN DE MODOS -->
+        <div id="modesScreen" class="screen">
+            <h2 class="modes-title">ELIGE UN MODO</h2>
+            <div class="modes-grid">
+                <button class="mode-card" id="btnModeClassic">
+                    <span class="mode-icon">🎯</span>
+                    <h3>Clásico</h3>
+                    <p>Atrapa la respuesta correcta</p>
+                </button>
+                <button class="mode-card locked" disabled>
+                    <span class="mode-icon">⏱️</span>
+                    <h3>Contrarreloj</h3>
+                    <p>Próximamente</p>
+                </button>
+                <button class="mode-card locked" disabled>
+                    <span class="mode-icon">🏆</span>
+                    <h3>Desafío</h3>
+                    <p>Próximamente</p>
+                </button>
+            </div>
+            <button class="btn-back" id="btnBackToMenu">← Volver</button>
         </div>
 
         <!-- PANTALLA DE JUEGO (SPLIT-SCREEN) -->
@@ -48,6 +71,40 @@
                     <div class="mascot-placeholder">🐾</div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- ACCESO DISCRETO AL PANEL (también: Alt + Shift + C) -->
+    <button id="adminToggle" class="admin-toggle" aria-label="Configuración" title="Configuración">⚙</button>
+
+    <!-- PANEL DE PERSONALIZACIÓN (oculto por defecto) -->
+    <div id="adminPanel" class="admin-overlay" aria-hidden="true">
+        <div class="admin-sheet" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
+            <header class="admin-header">
+                <h2 id="adminTitle">Personalización</h2>
+                <button id="adminClose" class="admin-icon-btn" aria-label="Cerrar">✕</button>
+            </header>
+
+            <!-- Vista: inicio de sesión -->
+            <section id="adminLogin" class="admin-section">
+                <p class="admin-note">Inicia sesión con tu cuenta de Google de administrador para editar los sprites del
+                    juego.</p>
+                <div class="admin-form">
+                    <button id="adminGoogle" type="button" class="admin-btn primary">Entrar con Google</button>
+                    <p id="adminLoginError" class="admin-error" role="alert"></p>
+                </div>
+            </section>
+
+            <!-- Vista: editor -->
+            <section id="adminEditor" class="admin-section" hidden>
+                <div class="admin-userbar">
+                    <span id="adminUser"></span>
+                    <button id="adminLogout" class="admin-btn">Salir</button>
+                </div>
+                <p class="admin-note">Haz clic en una miniatura o arrastra una imagen sobre la fila. Se optimiza sola y
+                    se publica al instante para todos.</p>
+                <div id="adminSlots"></div>
+            </section>
         </div>
     </div>
 

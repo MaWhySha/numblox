@@ -1,5 +1,13 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import {
+    initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+    collection, addDoc, serverTimestamp, doc, onSnapshot, setDoc, deleteDoc
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import {
+    getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { CONFIG, SPRITE_SLOTS } from './config.js';
+import { prepareImage } from './image-utils.js';
 
 const firebaseConfig = {
     apiKey: "AIzaSyC446mPO5t6O6Y2QW7uBQsq4FlbaY9H3xA",
@@ -11,8 +19,13 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+// Caché local: tras la primera visita solo se descargan los sprites que cambiaron (menos lecturas y carga más rápida)
+const db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
+const auth = getAuth(app);
 
+/* ---------------- MÉTRICAS (sin cambios) ---------------- */
 export async function saveGameMetrics(metrics) {
     try {
         const docRef = await addDoc(collection(db, "student_sessions"), {
@@ -26,3 +39,46 @@ export async function saveGameMetrics(metrics) {
         console.error("Error al guardar en Firebase:", err);
     }
 }
+
+/* ---------------- PERSONALIZACIÓN EN TIEMPO REAL ----------------
+   Colección "visuals": un documento por elemento personalizado.
+   visuals/<clave> -> { url: "data:image/webp;base64,...", updatedAt }
+   Sin documento = diseño base. */
+const visualsCol = () => collection(db, CONFIG.ASSETS.COLLECTION);
+
+export function subscribeVisuals(onData, onError) {
+    return onSnapshot(
+        visualsCol(),
+        (snap) => {
+            const map = {};
+            snap.forEach((d) => { map[d.id] = d.data(); });
+            onData(map);
+        },
+        (err) => {
+            console.error("Error leyendo personalización:", err);
+            if (onError) onError(err);
+        }
+    );
+}
+
+// Optimiza la imagen en el navegador y la guarda en Firestore (gratis, sin Storage)
+export async function uploadSprite(key, file, onProgress) {
+    const slot = SPRITE_SLOTS.find((s) => s.key === key);
+    const kind = slot ? slot.kind : 'sprite';
+    if (onProgress) onProgress(0.1);
+    const url = await prepareImage(file, kind);
+    if (onProgress) onProgress(0.6);
+    await setDoc(doc(db, CONFIG.ASSETS.COLLECTION, key), { url, updatedAt: Date.now() });
+    if (onProgress) onProgress(1);
+    return { url };
+}
+
+// Restablecer: borra el documento y el juego vuelve al diseño base
+export async function resetSprite(key) {
+    await deleteDoc(doc(db, CONFIG.ASSETS.COLLECTION, key));
+}
+
+/* ---------------- AUTENTICACIÓN DEL ADMINISTRADOR ---------------- */
+export const loginAdmin = () => signInWithPopup(auth, new GoogleAuthProvider());
+export const logoutAdmin = () => signOut(auth);
+export const onAdminChange = (callback) => onAuthStateChanged(auth, callback);
