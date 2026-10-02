@@ -115,7 +115,8 @@ body.booting #app {
 }
 
 /* --- SELECCIÓN DE MODOS --- */
-#modesScreen {
+#modesScreen,
+#difficultyScreen {
     background-color: #1e3a5f;
     flex-direction: column;
     justify-content: center;

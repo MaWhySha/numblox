@@ -1,8 +1,8 @@
 // Numblox · Panel de personalización (oculto por defecto)
 // Abrir: botón ⚙ discreto (esquina inferior izquierda) o atajo Alt + Shift + C
-import { CONFIG, SPRITE_SLOTS, LIFE_KEYS, EXPLOSION_KEYS, EXPLOSION_GROUP } from './config.js';
+import { CONFIG, SPRITE_SLOTS, LIFE_KEYS, EXPLOSION_KEYS, EXPLOSION_GROUP, AUDIO_KEY, AUDIO_GROUP } from './config.js';
 import { assets } from './assets.js';
-import { loginAdmin, logoutAdmin, onAdminChange, uploadSprite, resetSprite } from './firebase.js';
+import { loginAdmin, logoutAdmin, onAdminChange, uploadSprite, uploadAudio, resetSprite } from './firebase.js';
 
 const SPRITE_TYPES = ['image/png', 'image/webp'];
 const BACKGROUND_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
@@ -16,6 +16,14 @@ function validateFile(slot, file) {
     }
     if (file.size > CONFIG.ASSETS.MAX_FILE_MB * 1024 * 1024) {
         return `La imagen supera los ${CONFIG.ASSETS.MAX_FILE_MB} MB.`;
+    }
+    return null;
+}
+
+function validateAudio(file) {
+    if (!file.type.startsWith('audio/')) return 'El archivo debe ser de audio (MP3, OGG, M4A…).';
+    if (file.size > CONFIG.AUDIO.MAX_BYTES) {
+        return `El audio pesa ${Math.round(file.size / 1024)} KB y el máximo es ${Math.round(CONFIG.AUDIO.MAX_BYTES / 1024)} KB. Recórtalo o comprímelo (64–96 kbps).`;
     }
     return null;
 }
@@ -50,10 +58,17 @@ export function initAdminPanel() {
         slots: $('adminSlots')
     };
     const rows = new Map(); // clave -> { thumb, status, bar, reset, input, root }
+    let previewAudio = null; // Audio de la vista previa del panel
+    let previewBtn = null;
+
+    function stopPreview() {
+        if (previewAudio) { previewAudio.pause(); previewAudio = null; }
+        if (previewBtn) previewBtn.textContent = '▶ Escuchar';
+    }
 
     /* ---------- Abrir / cerrar ---------- */
     const openPanel = () => { el.panel.classList.add('open'); el.panel.setAttribute('aria-hidden', 'false'); };
-    const closePanel = () => { el.panel.classList.remove('open'); el.panel.setAttribute('aria-hidden', 'true'); };
+    const closePanel = () => { stopPreview(); el.panel.classList.remove('open'); el.panel.setAttribute('aria-hidden', 'true'); };
     const togglePanel = () => (el.panel.classList.contains('open') ? closePanel() : openPanel());
 
     el.toggle.addEventListener('click', togglePanel);
@@ -305,6 +320,96 @@ export function initAdminPanel() {
         return root;
     }
 
+    // Música de fondo: un solo audio, suena únicamente durante la partida
+    function buildAudioRow() {
+        const root = document.createElement('div');
+        root.className = 'slot-row slot-row-all';
+        root.innerHTML = `
+            <div class="slot-info">
+                <strong>Música de fondo (zona de juego)</strong>
+                <span class="slot-hint">Suena en bucle solo durante la partida. MP3, OGG o M4A de hasta ${Math.round(CONFIG.AUDIO.MAX_BYTES / 1024)} KB (≈ 1 minuto a 96 kbps). Si pesa más, recórtalo o comprímelo.</span>
+                <span class="slot-hint audio-state"></span>
+                <span class="slot-status"></span>
+                <div class="slot-progress"><i></i></div>
+            </div>
+            <div class="slot-actions">
+                <label class="admin-btn">Subir audio<input type="file" hidden accept="audio/*"></label>
+                <button type="button" class="admin-btn" data-act="play">▶ Escuchar</button>
+                <button type="button" class="admin-btn danger" data-act="reset">Restablecer por defecto</button>
+            </div>`;
+
+        const input = root.querySelector('input');
+        const playBtn = root.querySelector('[data-act="play"]');
+        const resetBtn = root.querySelector('[data-act="reset"]');
+        const state = root.querySelector('.audio-state');
+        const status = root.querySelector('.slot-status');
+        const bar = root.querySelector('.slot-progress i');
+        previewBtn = playBtn;
+
+        const say = (text, type) => { status.textContent = text; status.className = `slot-status ${type || ''}`; };
+        const refresh = () => {
+            const has = assets.isCustom(AUDIO_KEY);
+            state.textContent = has ? '● Audio personalizado activo' : '○ Sin audio (el juego suena en silencio)';
+            playBtn.disabled = !has;
+            resetBtn.disabled = !has;
+        };
+
+        playBtn.addEventListener('click', () => {
+            if (previewAudio) { stopPreview(); return; }
+            const url = assets.getUrl(AUDIO_KEY);
+            if (!url) return;
+            previewAudio = new Audio(url);
+            previewAudio.volume = CONFIG.AUDIO.VOLUME;
+            previewAudio.addEventListener('ended', stopPreview);
+            previewAudio.play().catch(() => { say('El navegador no pudo reproducir este audio.', 'error'); stopPreview(); });
+            playBtn.textContent = '■ Detener';
+        });
+
+        input.addEventListener('change', async () => {
+            const file = input.files && input.files[0];
+            input.value = '';
+            if (!file) return;
+            const error = validateAudio(file);
+            if (error) { say(error, 'error'); return; }
+            stopPreview();
+            input.disabled = true;
+            resetBtn.disabled = true;
+            say('Subiendo… 0%');
+            try {
+                await uploadAudio(AUDIO_KEY, file, (p) => {
+                    bar.style.width = `${Math.round(p * 100)}%`;
+                    say(`Subiendo… ${Math.round(p * 100)}%`);
+                });
+                say('✔ Guardado y publicado', 'ok');
+            } catch (err) {
+                say(friendlyError(err), 'error');
+            } finally {
+                input.disabled = false;
+                bar.style.width = '0%';
+                refresh();
+            }
+        });
+
+        resetBtn.addEventListener('click', async () => {
+            if (!confirm('¿Restablecer la música? El juego quedará sin audio y se eliminará de la nube.')) return;
+            stopPreview();
+            resetBtn.disabled = true;
+            say('Eliminando…');
+            try {
+                await resetSprite(AUDIO_KEY);
+                say('✔ Restablecido', 'ok');
+            } catch (err) {
+                say(friendlyError(err), 'error');
+            } finally {
+                refresh();
+            }
+        });
+
+        assets.subscribe((keys) => { if (keys.includes(AUDIO_KEY)) refresh(); });
+        refresh();
+        return root;
+    }
+
     function buildSlots() {
         const groups = [...new Set(SPRITE_SLOTS.map((s) => s.group))];
         for (const group of groups) {
@@ -318,6 +423,14 @@ export function initAdminPanel() {
             SPRITE_SLOTS.filter((s) => s.group === group).forEach((slot) => section.appendChild(buildRow(slot)));
             el.slots.appendChild(section);
         }
+
+        const audioSection = document.createElement('section');
+        audioSection.className = 'slot-group';
+        const audioTitle = document.createElement('h3');
+        audioTitle.textContent = AUDIO_GROUP;
+        audioSection.appendChild(audioTitle);
+        audioSection.appendChild(buildAudioRow());
+        el.slots.appendChild(audioSection);
     }
 
     buildSlots();

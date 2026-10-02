@@ -1,4 +1,4 @@
-import { CONFIG, EXPLOSION_KEYS } from './config.js';
+import { CONFIG, EXPLOSION_KEYS, AUDIO_KEY } from './config.js';
 import { saveGameMetrics } from './firebase.js';
 import { assets, bindDomSkins } from './assets.js';
 import { initAdminPanel } from './panel.js';
@@ -26,6 +26,11 @@ class NumbloxGame {
         this.lastFrame = 0;
         this.explosions = [];
         this.nextEquationFromBoard = true; // Alterna: tablero / aleatorio
+        this.digitBag = [];       // Ronda de aparición: los 10 dígitos barajados
+        this.speedMode = false;   // false = Zen, true = Velocidad
+        this.elapsedMs = 0;       // Tiempo jugado (para acelerar en modo Velocidad)
+        this.music = null;
+        this.musicUrl = null;
 
         this.init();
     }
@@ -33,16 +38,22 @@ class NumbloxGame {
     init() {
         window.addEventListener('resize', () => { if (this.playing) this.resizeCanvas(); });
 
-        // Flujo: Menú -> Selección de modos -> Modo Clásico
+        // Flujo: Menú -> Selección de modos -> Selección de ritmo -> Partida
         document.getElementById('btnPlay').addEventListener('click', () => this.showScreen('modesScreen'));
-        document.getElementById('btnModeClassic').addEventListener('click', () => this.startGame());
+        document.getElementById('btnModeClassic').addEventListener('click', () => this.showScreen('difficultyScreen'));
         document.getElementById('btnBackToMenu').addEventListener('click', () => this.showScreen('menuScreen'));
+        document.getElementById('btnZen').addEventListener('click', () => this.startGame(false));
+        document.getElementById('btnSpeed').addEventListener('click', () => this.startGame(true));
+        document.getElementById('btnBackToModes').addEventListener('click', () => this.showScreen('modesScreen'));
         this.canvas.addEventListener('pointerdown', (e) => this.handleInput(e));
 
         // Personalización dinámica
         bindDomSkins();
         initAdminPanel();
-        assets.subscribe(() => this.renderLives()); // Las vidas se redibujan si cambia un sprite
+        assets.subscribe(() => {
+            this.renderLives(); // Las vidas se redibujan si cambia un sprite
+            this.syncMusic();   // y la música se actualiza si cambia el audio
+        });
         window.__numbloxReady = true; // Señal para el aviso de diagnóstico del index.html
         this.boot();
     }
@@ -60,6 +71,7 @@ class NumbloxGame {
     showScreen(id) {
         document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === id));
         document.body.classList.toggle('playing', id === 'gameScreen');
+        if (id !== 'gameScreen') this.stopMusic(); // La música solo suena en la zona de juego
     }
 
     resizeCanvas() {
@@ -70,20 +82,66 @@ class NumbloxGame {
         this.lineY = this.canvas.height * CONFIG.GAME.DANGER_LINE_RATIO;
     }
 
-    startGame() {
+    startGame(speedMode = false) {
+        this.speedMode = speedMode;
         this.showScreen('gameScreen');
         this.playing = true;
 
         this.resizeCanvas();
         this.resetStats();
         this.lastFrame = 0;
+        this.elapsedMs = 0;
         this.generateEquation();
 
-        if (this.spawnTimer) clearInterval(this.spawnTimer);
-        this.spawnTimer = setInterval(() => this.spawnBubble(), CONFIG.GAME.SPAWN_INTERVAL);
+        this.scheduleSpawn();
+        this.syncMusic();
+        this.playMusic(); // Ocurre dentro del clic del jugador, así el navegador permite el audio
 
         if (this.animationFrame) cancelAnimationFrame(this.animationFrame);
         this.gameLoop();
+    }
+
+    // Intervalo entre apariciones: fijo en Zen; en modo Velocidad se acorta con el tiempo jugado
+    currentSpawnInterval() {
+        const base = CONFIG.GAME.SPAWN_INTERVAL;
+        if (!this.speedMode) return base;
+        const { STEP_SECONDS, FACTOR, MIN_INTERVAL } = CONFIG.GAME.SPEED_MODE;
+        const steps = this.elapsedMs / (STEP_SECONDS * 1000);
+        return Math.max(MIN_INTERVAL, base * Math.pow(FACTOR, steps));
+    }
+
+    scheduleSpawn() {
+        clearTimeout(this.spawnTimer);
+        this.spawnTimer = setTimeout(() => {
+            if (!this.playing) return;
+            this.spawnBubble();
+            this.scheduleSpawn();
+        }, this.currentSpawnInterval());
+    }
+
+    // Música: un solo audio en bucle, únicamente durante la partida
+    syncMusic() {
+        const url = assets.getUrl(AUDIO_KEY);
+        if (url === this.musicUrl) return;
+        this.stopMusic();
+        this.musicUrl = url;
+        if (!url) { this.music = null; return; }
+        this.music = new Audio(url);
+        this.music.loop = true;
+        this.music.volume = CONFIG.AUDIO.VOLUME;
+        if (this.playing) this.playMusic();
+    }
+
+    playMusic() {
+        if (!this.music) return;
+        const p = this.music.play();
+        if (p && p.catch) p.catch(() => { }); // Si el navegador bloquea el audio, el juego sigue en silencio
+    }
+
+    stopMusic() {
+        if (!this.music) return;
+        this.music.pause();
+        this.music.currentTime = 0;
     }
 
     resetStats() {
@@ -96,6 +154,7 @@ class NumbloxGame {
         this.dangerElapsed = 0;
         this.explosions = [];
         this.nextEquationFromBoard = true;
+        this.digitBag = [];
         this.updateUI();
     }
 
@@ -124,12 +183,26 @@ class NumbloxGame {
         document.getElementById('targetEquation').innerText = `${numA} + ${numB} = ?`;
     }
 
+    // Rondas de aparición: cada ronda trae los 10 dígitos exactamente una vez, en orden aleatorio
+    nextDigit() {
+        if (this.digitBag.length === 0) {
+            const { MIN_DIGIT, MAX_DIGIT } = CONFIG.GAME;
+            const round = [];
+            for (let d = MIN_DIGIT; d <= MAX_DIGIT; d++) round.push(d);
+            for (let i = round.length - 1; i > 0; i--) { // Barajado Fisher-Yates
+                const j = Math.floor(Math.random() * (i + 1));
+                [round[i], round[j]] = [round[j], round[i]];
+            }
+            this.digitBag = round;
+        }
+        return this.digitBag.pop();
+    }
+
     spawnBubble() {
-        const { MIN_DIGIT, MAX_DIGIT } = CONFIG.GAME;
         const lane = Math.floor(Math.random() * CONFIG.GAME.LANES);
         const baseRadius = Math.min(this.laneWidth * 0.35, 45); // Ajuste dinámico por pantalla
         const x = (lane * this.laneWidth) + (this.laneWidth / 2);
-        const value = MIN_DIGIT + Math.floor(Math.random() * (MAX_DIGIT - MIN_DIGIT + 1));
+        const value = this.nextDigit();
 
         this.bubbles.push({
             id: this.nextBubbleId++,
@@ -311,6 +384,7 @@ class NumbloxGame {
         if (!this.playing) return;
         const dt = Math.min(now - (this.lastFrame || now), 100); // Limita saltos si la pestaña estuvo oculta
         this.lastFrame = now;
+        this.elapsedMs += dt;
 
         this.updatePhysics();
         this.updateDanger(dt);
@@ -413,8 +487,9 @@ class NumbloxGame {
 
     endGame(reason) {
         this.playing = false;
-        clearInterval(this.spawnTimer);
+        clearTimeout(this.spawnTimer);
         cancelAnimationFrame(this.animationFrame);
+        this.stopMusic();
 
         saveGameMetrics({
             score: this.score,

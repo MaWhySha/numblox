@@ -1,6 +1,6 @@
 // Numblox · Motor de assets dinámicos
 // Escucha Firestore en tiempo real, precarga las imágenes y avisa a quien lo necesite.
-import { CONFIG } from './config.js';
+import { CONFIG, AUDIO_KEY } from './config.js';
 import { subscribeVisuals } from './firebase.js';
 
 class AssetManager {
@@ -61,7 +61,10 @@ class AssetManager {
             if (!entry || !entry.url) continue;
             const prev = this.entries[key];
             this.entries[key] = entry;
-            if (!prev || prev.url !== entry.url) loads.push(this._load(key, entry.url));
+            if (!prev || prev.url !== entry.url) {
+                // El audio no es una imagen: solo se avisa del cambio (el juego usa getUrl)
+                loads.push(key === AUDIO_KEY ? this._announce(key) : this._load(key, entry.url));
+            }
         }
 
         if (removed.length) this._emit(removed);
@@ -70,6 +73,11 @@ class AssetManager {
             this._firstSync = false;
             Promise.all(loads).then(() => this._resolveReady());
         }
+    }
+
+    _announce(key) {
+        this._emit([key]);
+        return Promise.resolve();
     }
 
     _load(key, url) {
@@ -102,10 +110,10 @@ export const assets = new AssetManager();
    Aplicación de skins a elementos del DOM (fondos y botón JUGAR)
 ------------------------------------------------------------------- */
 const BACKGROUND_TARGETS = {
-    bgMenu: 'menuScreen',
-    bgModes: 'modesScreen',
-    bgGameLeft: 'gameZone',
-    bgGameRight: 'uiPanel'
+    bgMenu: ['menuScreen'],
+    bgModes: ['modesScreen', 'difficultyScreen'], // La pantalla de ritmo comparte el fondo de modos
+    bgGameLeft: ['gameZone'],
+    bgGameRight: ['uiPanel']
 };
 
 function applyBackground(key, elementId) {
@@ -138,7 +146,9 @@ function applyPlayButton() {
 
 export function bindDomSkins() {
     const applyAll = () => {
-        for (const [key, id] of Object.entries(BACKGROUND_TARGETS)) applyBackground(key, id);
+        for (const [key, ids] of Object.entries(BACKGROUND_TARGETS)) {
+            ids.forEach((id) => applyBackground(key, id));
+        }
         applyPlayButton();
     };
     applyAll();

@@ -73,6 +73,29 @@ export async function uploadSprite(key, file, onProgress) {
     return { url };
 }
 
+function readAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error || new Error('No se pudo leer el archivo.'));
+        reader.readAsDataURL(file);
+    });
+}
+
+// Guarda un audio (MP3/OGG/M4A…) como data URL en el mismo documento-por-clave que las imágenes
+export async function uploadAudio(key, file, onProgress) {
+    if (file.size > CONFIG.AUDIO.MAX_BYTES) {
+        throw new Error(`El audio pesa ${Math.round(file.size / 1024)} KB y el máximo es ${Math.round(CONFIG.AUDIO.MAX_BYTES / 1024)} KB.`);
+    }
+    if (onProgress) onProgress(0.2);
+    const url = await readAsDataURL(file);
+    if (url.length > 990000) throw new Error('El audio es demasiado pesado para la base de datos.');
+    if (onProgress) onProgress(0.6);
+    await setDoc(doc(db, CONFIG.ASSETS.COLLECTION, key), { url, updatedAt: Date.now() });
+    if (onProgress) onProgress(1);
+    return { url };
+}
+
 // Restablecer: borra el documento y el juego vuelve al diseño base
 export async function resetSprite(key) {
     await deleteDoc(doc(db, CONFIG.ASSETS.COLLECTION, key));

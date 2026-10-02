@@ -9,7 +9,14 @@ export const CONFIG = {
         MIN_DIGIT: 0,         // Solo caen burbujas del 0 al 9
         MAX_DIGIT: 9,
         DANGER_LINE_RATIO: 0.12, // Altura de la línea roja (fracción desde arriba del tablero)
-        DANGER_SECONDS: 5        // Segundos de margen tocando la línea antes de perder
+        DANGER_SECONDS: 5,       // Segundos de margen tocando la línea antes de perder
+
+        // Modo Velocidad: el intervalo entre apariciones se acorta con el tiempo jugado
+        SPEED_MODE: {
+            STEP_SECONDS: 10,    // Cada cuántos segundos acelera
+            FACTOR: 0.9,         // En cada paso, el intervalo se multiplica por este valor
+            MIN_INTERVAL: 600    // Límite: nunca aparece más rápido que esto (ms)
+        }
     },
     GFX: {
         GLOBAL_SCALE: 1.0,     // Aumenta o disminuye para escalar los objetos
@@ -38,6 +45,10 @@ export const CONFIG = {
             0: '#00f5d4'
         }
     },
+    AUDIO: {
+        MAX_BYTES: 700 * 1024,   // Cabe en un documento de Firestore (≈ 1 min a 96 kbps)
+        VOLUME: 0.5              // 0 a 1
+    },
     ASSETS: {
         COLLECTION: 'visuals',     // Firestore: visuals/<clave> (una imagen optimizada por documento)
         MAX_FILE_MB: 10,           // Peso máximo del archivo original; se comprime automáticamente al subirlo
@@ -47,6 +58,10 @@ export const CONFIG = {
 
 // Claves de las vidas: life1 ... life5
 export const LIFE_KEYS = Array.from({ length: CONFIG.GAME.MAX_LIVES }, (_, i) => `life${i + 1}`);
+
+// Música de fondo (un solo audio, solo suena en la zona de juego)
+export const AUDIO_KEY = 'audioBgm';
+export const AUDIO_GROUP = 'Audio';
 
 // Frames de la explosión: explosion1 ... explosionN (iguales para todas las burbujas)
 export const EXPLOSION_KEYS = Array.from({ length: CONFIG.GFX.EXPLOSION_FRAMES }, (_, i) => `explosion${i + 1}`);
@@ -62,8 +77,8 @@ export const SPRITE_SLOTS = [
     },
     {
         key: 'bgModes', group: 'Pantallas', kind: 'background',
-        label: 'Fondo de selección de modos',
-        hint: 'Imagen completa · recomendado 1920×1080'
+        label: 'Fondo de selección de modos y de ritmo',
+        hint: 'Imagen completa · recomendado 1920×1080 · se usa en ambas pantallas'
     },
     {
         key: 'bgGameLeft', group: 'Modo Clásico', kind: 'background',
