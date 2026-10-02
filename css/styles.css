@@ -1,0 +1,181 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body,
+html {
+    width: 100%;
+    height: 100%;
+    font-family: 'Fredoka', 'Comic Sans MS', sans-serif;
+    background-color: #0b111e;
+    overflow: hidden;
+}
+
+#app {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+}
+
+.screen {
+    position: absolute;
+    inset: 0;
+    display: none;
+}
+
+.screen.active {
+    display: flex;
+}
+
+/* --- MENÚ --- */
+#menuScreen {
+    background: #1e3a5f;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+.game-title {
+    font-size: 3rem;
+    color: #fff;
+    text-shadow: 4px 4px 0px #000;
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    color: #4dd2ff;
+    margin-bottom: 30px;
+    font-size: 1.2rem;
+}
+
+.btn-primary {
+    padding: 15px 40px;
+    font-size: 1.5rem;
+    font-weight: bold;
+    border-radius: 30px;
+    border: 4px solid #fff;
+    background: #4dd2ff;
+    color: #000;
+    cursor: pointer;
+    box-shadow: 0 6px 0 #000;
+    transition: transform 0.1s;
+}
+
+.btn-primary:active {
+    transform: translateY(6px);
+    box-shadow: 0 0 0 #000;
+}
+
+/* --- JUEGO SPLIT-SCREEN --- */
+#gameScreen {
+    flex-direction: row;
+}
+
+#gameZone {
+    flex: 7;
+    /* Ocupa el 70% del ancho */
+    background: #121826;
+    position: relative;
+}
+
+#gameCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+#uiPanel {
+    flex: 3;
+    /* Ocupa el 30% del ancho */
+    background: #e0f4fc;
+    border-left: 4px solid #000;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.ui-card {
+    width: 100%;
+    background: #fff;
+    border: 3px solid #000;
+    border-radius: 15px;
+    padding: 10px;
+    text-align: center;
+    box-shadow: 4px 4px 0 #000;
+}
+
+.ui-label {
+    display: block;
+    font-size: 0.9rem;
+    color: #666;
+    font-weight: bold;
+}
+
+#scoreText {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #000;
+}
+
+#heartsRow {
+    display: flex;
+    justify-content: center;
+    gap: 5px;
+    margin-top: 5px;
+}
+
+.heart-icon {
+    width: 20px;
+    height: 20px;
+    background: #ff3b5c;
+    border: 2px solid #000;
+    border-radius: 50%;
+}
+
+.cloud-box {
+    width: 100%;
+    background: #fff;
+    border: 4px dashed #4dd2ff;
+    border-radius: 20px;
+    padding: 20px;
+    text-align: center;
+}
+
+.cloud-label {
+    font-size: 0.9rem;
+    color: #666;
+    font-weight: bold;
+}
+
+#targetEquation {
+    display: block;
+    font-size: 2.2rem;
+    font-weight: bold;
+    color: #000;
+    margin-top: 10px;
+}
+
+#mascotBox {
+    margin-top: auto;
+    width: 100px;
+    height: 100px;
+}
+
+.mascot-placeholder {
+    width: 100%;
+    height: 100%;
+    background: #ffd54d;
+    border: 3px solid #000;
+    border-radius: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3rem;
+    box-shadow: 4px 4px 0 #000;
+}

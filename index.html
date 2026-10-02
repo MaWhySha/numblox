@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Numblox</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+    <div id="app">
+        <!-- PANTALLA MENÚ PRINCIPAL -->
+        <div id="menuScreen" class="screen active">
+            <div class="menu-content">
+                <h1 class="game-title">NUMBLOX</h1>
+                <p class="subtitle">Aprende matemáticas jugando</p>
+                <button class="btn-primary" id="btnPlay">JUGAR</button>
+            </div>
+        </div>
+
+        <!-- PANTALLA DE JUEGO (SPLIT-SCREEN) -->
+        <div id="gameScreen" class="screen">
+            <!-- Izquierda: Zona de físicas y carriles -->
+            <div id="gameZone">
+                <canvas id="gameCanvas"></canvas>
+            </div>
+
+            <!-- Derecha: Panel de estado y matemáticas -->
+            <div id="uiPanel">
+                <div class="ui-card">
+                    <span class="ui-label">VIDAS</span>
+                    <div id="heartsRow"></div>
+                </div>
+
+                <div class="ui-card">
+                    <span class="ui-label">PUNTOS</span>
+                    <span id="scoreText">0</span>
+                </div>
+
+                <div class="cloud-box">
+                    <span class="cloud-label">Encuentra la respuesta:</span>
+                    <span id="targetEquation">0 + 0 = ?</span>
+                </div>
+
+                <div id="mascotBox">
+                    <!-- Aquí irá el sprite de la mascota en el futuro -->
+                    <div class="mascot-placeholder">🐾</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/game.js"></script>
+</body>
+
+</html>
