@@ -1,5 +1,7 @@
 import { CONFIG } from './config.js';
 import { saveGameMetrics } from './firebase.js';
+import { assets, bindDomSkins } from './assets.js';
+import { initAdminPanel } from './panel.js';
 
 class NumbloxGame {
     constructor() {
@@ -7,23 +9,52 @@ class NumbloxGame {
         this.ctx = this.canvas.getContext('2d');
 
         this.lives = CONFIG.GAME.MAX_LIVES;
+        this.prevLives = this.lives;
         this.score = 0;
         this.correctAnswers = 0;
         this.wrongAnswers = 0;
 
         this.bubbles = [];
+        this.nextBubbleId = 0;
         this.targetResult = 0;
         this.spawnTimer = null;
         this.laneWidth = 0;
         this.animationFrame = null;
+        this.playing = false;
 
         this.init();
     }
 
     init() {
-        window.addEventListener('resize', () => this.resizeCanvas());
-        document.getElementById('btnPlay').addEventListener('click', () => this.startGame());
+        window.addEventListener('resize', () => { if (this.playing) this.resizeCanvas(); });
+
+        // Flujo: Menú -> Selección de modos -> Modo Clásico
+        document.getElementById('btnPlay').addEventListener('click', () => this.showScreen('modesScreen'));
+        document.getElementById('btnModeClassic').addEventListener('click', () => this.startGame());
+        document.getElementById('btnBackToMenu').addEventListener('click', () => this.showScreen('menuScreen'));
         this.canvas.addEventListener('pointerdown', (e) => this.handleInput(e));
+
+        // Personalización dinámica
+        bindDomSkins();
+        initAdminPanel();
+        assets.subscribe(() => this.renderLives()); // Las vidas se redibujan si cambia un sprite
+        window.__numbloxReady = true; // Señal para el aviso de diagnóstico del index.html
+        this.boot();
+    }
+
+    // Espera (con límite) a que lleguen los sprites para evitar el "parpadeo" del diseño base
+    async boot() {
+        assets.start();
+        await Promise.race([
+            assets.ready,
+            new Promise((resolve) => setTimeout(resolve, CONFIG.ASSETS.BOOT_TIMEOUT_MS))
+        ]);
+        document.body.classList.remove('booting');
+    }
+
+    showScreen(id) {
+        document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === id));
+        document.body.classList.toggle('playing', id === 'gameScreen');
     }
 
     resizeCanvas() {
@@ -34,8 +65,8 @@ class NumbloxGame {
     }
 
     startGame() {
-        document.getElementById('menuScreen').classList.remove('active');
-        document.getElementById('gameScreen').classList.add('active');
+        this.showScreen('gameScreen');
+        this.playing = true;
 
         this.resizeCanvas();
         this.resetStats();
@@ -50,6 +81,7 @@ class NumbloxGame {
 
     resetStats() {
         this.lives = CONFIG.GAME.MAX_LIVES;
+        this.prevLives = this.lives;
         this.score = 0;
         this.correctAnswers = 0;
         this.wrongAnswers = 0;
@@ -57,32 +89,32 @@ class NumbloxGame {
         this.updateUI();
     }
 
+    // El resultado siempre está entre 0 y 9 (solo existen burbujas del 0 al 9)
     generateEquation() {
-        const numA = Math.floor(Math.random() * 5) + 1;
-        const numB = Math.floor(Math.random() * 5) + 1;
-        this.targetResult = numA + numB;
+        const { MIN_DIGIT, MAX_DIGIT } = CONFIG.GAME;
+        this.targetResult = MIN_DIGIT + Math.floor(Math.random() * (MAX_DIGIT - MIN_DIGIT + 1));
+        const numA = Math.floor(Math.random() * (this.targetResult + 1));
+        const numB = this.targetResult - numA;
         document.getElementById('targetEquation').innerText = `${numA} + ${numB} = ?`;
     }
 
     spawnBubble() {
+        const { MIN_DIGIT, MAX_DIGIT, CORRECT_CHANCE } = CONFIG.GAME;
         const lane = Math.floor(Math.random() * CONFIG.GAME.LANES);
         const baseRadius = Math.min(this.laneWidth * 0.35, 45); // Ajuste dinámico por pantalla
         const x = (lane * this.laneWidth) + (this.laneWidth / 2);
 
-        // 40% probabilidad de que sea la respuesta correcta
-        let value = (Math.random() < 0.4) ? this.targetResult : Math.floor(Math.random() * 18) + 1;
-
-        // Obtener un color del 0 al 9 usando el último dígito del valor
-        const colorKey = value % 10;
+        const value = (Math.random() < CORRECT_CHANCE)
+            ? this.targetResult
+            : MIN_DIGIT + Math.floor(Math.random() * (MAX_DIGIT - MIN_DIGIT + 1));
 
         this.bubbles.push({
-            id: Date.now(),
+            id: this.nextBubbleId++,
             lane: lane,
             x: x,
             y: -baseRadius,
             radius: baseRadius,
-            value: value,
-            color: CONFIG.GFX.COLORS[colorKey] || '#ffffff'
+            value: value
         });
     }
 
@@ -109,10 +141,53 @@ class NumbloxGame {
         }
     }
 
+    // Dibuja una imagen dentro de una caja w×h conservando su proporción (sin deformar)
+    drawImageContain(img, x, y, w, h) {
+        const scale = Math.min(w / img.naturalWidth, h / img.naturalHeight);
+        const dw = img.naturalWidth * scale;
+        const dh = img.naturalHeight * scale;
+        this.ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+    }
+
+    drawBubble(b) {
+        const r = b.radius * CONFIG.GFX.GLOBAL_SCALE;
+        const sprite = assets.getImage(`bubble${b.value}`);
+
+        // Con sprite personalizado: solo se dibuja la imagen (sin círculo ni texto)
+        if (sprite) {
+            this.drawImageContain(sprite, b.x - r, b.y - r, r * 2, r * 2);
+            return;
+        }
+
+        // Diseño base: círculo blanco con borde negro y su número
+        this.ctx.beginPath();
+        if (CONFIG.GFX.SHAPE_TYPE === 'circle') {
+            this.ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+        } else {
+            this.ctx.rect(b.x - r, b.y - r, r * 2, r * 2);
+        }
+
+        this.ctx.fillStyle = CONFIG.GFX.USE_NUMBER_COLORS
+            ? (CONFIG.GFX.COLORS[b.value] || CONFIG.GFX.DEFAULT_BUBBLE_FILL)
+            : CONFIG.GFX.DEFAULT_BUBBLE_FILL;
+        this.ctx.fill();
+
+        this.ctx.lineWidth = CONFIG.GFX.BORDER_WIDTH;
+        this.ctx.strokeStyle = CONFIG.GFX.DEFAULT_BUBBLE_BORDER;
+        this.ctx.stroke();
+
+        this.ctx.fillStyle = CONFIG.GFX.DEFAULT_TEXT_COLOR;
+        this.ctx.font = `bold ${r}px sans-serif`;
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText(b.value, b.x, b.y);
+    }
+
     draw() {
+        // El canvas es transparente: el fondo de la zona izquierda lo pone el CSS/sprite
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // Dibujar columnas (guías visuales opcionales)
+        // Guías de carriles
         this.ctx.strokeStyle = 'rgba(255,255,255,0.05)';
         this.ctx.lineWidth = 2;
         for (let i = 1; i < CONFIG.GAME.LANES; i++) {
@@ -122,35 +197,7 @@ class NumbloxGame {
             this.ctx.stroke();
         }
 
-        // Dibujar burbujas/bloques
-        for (let b of this.bubbles) {
-            let r = b.radius * CONFIG.GFX.GLOBAL_SCALE;
-
-            if (CONFIG.GFX.USE_SPRITES) {
-                // Lógica futura para imágenes
-                // this.ctx.drawImage(img, b.x - r, b.y - r, r*2, r*2);
-            } else {
-                this.ctx.beginPath();
-                if (CONFIG.GFX.SHAPE_TYPE === 'circle') {
-                    this.ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
-                } else {
-                    this.ctx.rect(b.x - r, b.y - r, r * 2, r * 2);
-                }
-
-                this.ctx.fillStyle = b.color;
-                this.ctx.fill();
-
-                this.ctx.lineWidth = CONFIG.GFX.BORDER_WIDTH;
-                this.ctx.strokeStyle = CONFIG.GFX.BORDER_COLOR;
-                this.ctx.stroke();
-
-                this.ctx.fillStyle = CONFIG.GFX.TEXT_COLOR;
-                this.ctx.font = `bold ${r}px sans-serif`;
-                this.ctx.textAlign = 'center';
-                this.ctx.textBaseline = 'middle';
-                this.ctx.fillText(b.value, b.x, b.y);
-            }
-        }
+        for (let b of this.bubbles) this.drawBubble(b);
     }
 
     gameLoop() {
@@ -161,14 +208,10 @@ class NumbloxGame {
 
     handleInput(e) {
         const rect = this.canvas.getBoundingClientRect();
-        // Soporte para touch o mouse
-        const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-        const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
 
-        const clickX = clientX - rect.left;
-        const clickY = clientY - rect.top;
-
-        // Detectar colisión click -> burbuja desde arriba hacia abajo (últimas renderizadas)
+        // De la burbuja más reciente (arriba) hacia atrás
         for (let i = this.bubbles.length - 1; i >= 0; i--) {
             let b = this.bubbles[i];
             let r = b.radius * CONFIG.GFX.GLOBAL_SCALE;
@@ -205,18 +248,39 @@ class NumbloxGame {
         }
     }
 
+    // Siempre se dibujan las 5 vidas; las perdidas quedan atenuadas (misma forma, sprite o base)
+    renderLives() {
+        const row = document.getElementById('heartsRow');
+        row.style.setProperty('--life-size', `${CONFIG.GFX.LIFE_SIZE}px`);
+        row.innerHTML = '';
+
+        for (let i = 0; i < CONFIG.GAME.MAX_LIVES; i++) {
+            const slot = document.createElement('div');
+            slot.className = 'life-slot';
+
+            const img = assets.getImage(`life${i + 1}`);
+            if (img) {
+                slot.style.backgroundImage = `url("${img.src}")`;
+            } else {
+                slot.classList.add('default');
+            }
+
+            if (i >= this.lives) {
+                slot.classList.add('lost');
+                if (i < this.prevLives) slot.classList.add('just-lost'); // animación al perderla
+            }
+            row.appendChild(slot);
+        }
+        this.prevLives = this.lives;
+    }
+
     updateUI() {
         document.getElementById('scoreText').innerText = this.score;
-        const heartsRow = document.getElementById('heartsRow');
-        heartsRow.innerHTML = '';
-        for (let i = 0; i < this.lives; i++) {
-            let heart = document.createElement('div');
-            heart.className = 'heart-icon';
-            heartsRow.appendChild(heart);
-        }
+        this.renderLives();
     }
 
     endGame() {
+        this.playing = false;
         clearInterval(this.spawnTimer);
         cancelAnimationFrame(this.animationFrame);
 
@@ -228,13 +292,15 @@ class NumbloxGame {
 
         setTimeout(() => {
             alert(`¡Juego terminado! Puntos: ${this.score}`);
-            document.getElementById('gameScreen').classList.remove('active');
-            document.getElementById('menuScreen').classList.add('active');
+            this.showScreen('menuScreen');
         }, 100);
     }
 }
 
-// Iniciar cuando el DOM cargue
-window.addEventListener('DOMContentLoaded', () => {
-    new NumbloxGame();
-});
+// Iniciar cuando el DOM esté listo (funciona aunque el módulo cargue tarde)
+const startGame = () => new NumbloxGame();
+if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', startGame);
+} else {
+    startGame();
+}

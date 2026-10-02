@@ -108,6 +108,28 @@
         </div>
     </div>
 
+    <script>
+        // Diagnóstico: si el juego no arranca en 5 s, muestra qué revisar en lugar de una pantalla vacía
+        (function () {
+            var lastError = '';
+            window.addEventListener('error', function (e) { lastError = e.message || ''; });
+            window.addEventListener('unhandledrejection', function (e) {
+                lastError = (e.reason && e.reason.message) || String(e.reason || '');
+            });
+            setTimeout(function () {
+                if (window.__numbloxReady) return;
+                document.body.classList.remove('booting');
+                var box = document.createElement('pre');
+                box.style.cssText = 'position:fixed;inset:0;z-index:2000;margin:0;padding:16px;overflow:auto;' +
+                    'white-space:pre-wrap;color:#fff;background:#7a1020;font:14px monospace;user-select:text';
+                box.textContent = 'El juego no pudo iniciar.\n\n' + (lastError ? 'Error: ' + lastError + '\n\n' : '') +
+                    'Revisa que la carpeta js/ del repositorio tenga estos 6 archivos (en minúsculas):\n' +
+                    'config.js, firebase.js, game.js, assets.js, panel.js, image-utils.js\n\n' +
+                    'Luego recarga sin caché (Ctrl+F5).';
+                document.body.appendChild(box);
+            }, 5000);
+        })();
+    </script>
     <script type="module" src="js/game.js"></script>
 </body>
 
