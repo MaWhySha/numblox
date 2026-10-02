@@ -8,7 +8,8 @@ export const CONFIG = {
         MAX_LIVES: 5,
         MIN_DIGIT: 0,         // Solo caen burbujas del 0 al 9
         MAX_DIGIT: 9,
-        CORRECT_CHANCE: 0.4   // Probabilidad de que una burbuja sea la respuesta
+        DANGER_LINE_RATIO: 0.12, // Altura de la línea roja (fracción desde arriba del tablero)
+        DANGER_SECONDS: 5        // Segundos de margen tocando la línea antes de perder
     },
     GFX: {
         GLOBAL_SCALE: 1.0,     // Aumenta o disminuye para escalar los objetos

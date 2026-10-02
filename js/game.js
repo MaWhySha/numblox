@@ -21,6 +21,9 @@ class NumbloxGame {
         this.laneWidth = 0;
         this.animationFrame = null;
         this.playing = false;
+        this.lineY = 0;           // Posición de la línea roja
+        this.dangerElapsed = 0;   // ms acumulados con alguna burbuja tocando la línea
+        this.lastFrame = 0;
 
         this.init();
     }
@@ -62,6 +65,7 @@ class NumbloxGame {
         this.canvas.width = zone.clientWidth;
         this.canvas.height = zone.clientHeight;
         this.laneWidth = this.canvas.width / CONFIG.GAME.LANES;
+        this.lineY = this.canvas.height * CONFIG.GAME.DANGER_LINE_RATIO;
     }
 
     startGame() {
@@ -70,6 +74,8 @@ class NumbloxGame {
 
         this.resizeCanvas();
         this.resetStats();
+        this.lastFrame = 0;
+        this.spawnBubble();      // Primera burbuja: la ecuación sale de lo que hay en el tablero
         this.generateEquation();
 
         if (this.spawnTimer) clearInterval(this.spawnTimer);
@@ -86,27 +92,28 @@ class NumbloxGame {
         this.correctAnswers = 0;
         this.wrongAnswers = 0;
         this.bubbles = [];
+        this.dangerElapsed = 0;
         this.updateUI();
     }
 
-    // El resultado siempre está entre 0 y 9 (solo existen burbujas del 0 al 9)
+    // El número objetivo se elige entre las burbujas que YA están en el tablero
+    // (así siempre hay una respuesta disponible sin esperar a que caiga).
     generateEquation() {
-        const { MIN_DIGIT, MAX_DIGIT } = CONFIG.GAME;
-        this.targetResult = MIN_DIGIT + Math.floor(Math.random() * (MAX_DIGIT - MIN_DIGIT + 1));
+        if (this.bubbles.length === 0) this.spawnBubble(); // Tablero vacío: aparece una de inmediato
+        const pool = this.bubbles.map((b) => b.value);
+        this.targetResult = pool[Math.floor(Math.random() * pool.length)];
+
         const numA = Math.floor(Math.random() * (this.targetResult + 1));
         const numB = this.targetResult - numA;
         document.getElementById('targetEquation').innerText = `${numA} + ${numB} = ?`;
     }
 
     spawnBubble() {
-        const { MIN_DIGIT, MAX_DIGIT, CORRECT_CHANCE } = CONFIG.GAME;
+        const { MIN_DIGIT, MAX_DIGIT } = CONFIG.GAME;
         const lane = Math.floor(Math.random() * CONFIG.GAME.LANES);
         const baseRadius = Math.min(this.laneWidth * 0.35, 45); // Ajuste dinámico por pantalla
         const x = (lane * this.laneWidth) + (this.laneWidth / 2);
-
-        const value = (Math.random() < CORRECT_CHANCE)
-            ? this.targetResult
-            : MIN_DIGIT + Math.floor(Math.random() * (MAX_DIGIT - MIN_DIGIT + 1));
+        const value = MIN_DIGIT + Math.floor(Math.random() * (MAX_DIGIT - MIN_DIGIT + 1));
 
         this.bubbles.push({
             id: this.nextBubbleId++,
@@ -114,7 +121,8 @@ class NumbloxGame {
             x: x,
             y: -baseRadius,
             radius: baseRadius,
-            value: value
+            value: value,
+            settled: false // true cuando ya no puede seguir cayendo (apilada)
         });
     }
 
@@ -137,6 +145,9 @@ class NumbloxGame {
 
             if (b.y < targetY) {
                 b.y += CONFIG.GAME.FALL_SPEED;
+                b.settled = false;
+            } else {
+                b.settled = true;
             }
         }
     }
@@ -197,16 +208,78 @@ class NumbloxGame {
             this.ctx.stroke();
         }
 
+        this.drawDangerLine();
         for (let b of this.bubbles) this.drawBubble(b);
+        this.drawDangerCountdown();
     }
 
-    gameLoop() {
+    // Una burbuja apilada que toca la línea inicia la cuenta regresiva; si se libera, se reinicia
+    updateDanger(dt) {
+        const scale = CONFIG.GFX.GLOBAL_SCALE;
+        const touching = this.bubbles.some((b) => b.settled && (b.y - b.radius * scale) <= this.lineY);
+
+        if (touching) {
+            this.dangerElapsed += dt;
+            if (this.dangerElapsed >= CONFIG.GAME.DANGER_SECONDS * 1000) this.endGame('stack');
+        } else {
+            this.dangerElapsed = 0;
+        }
+    }
+
+    drawDangerLine() {
+        const ctx = this.ctx;
+        const inDanger = this.dangerElapsed > 0;
+        const pulse = Math.abs(Math.sin(performance.now() / 150));
+
+        // Zona de peligro
+        ctx.fillStyle = inDanger ? `rgba(255, 0, 0, ${0.1 + pulse * 0.15})` : 'rgba(255, 60, 60, 0.07)';
+        ctx.fillRect(0, 0, this.canvas.width, this.lineY);
+
+        // Línea roja
+        ctx.save();
+        ctx.setLineDash([14, 8]);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#ff2d2d';
+        ctx.globalAlpha = inDanger ? 0.5 + pulse * 0.5 : 1;
+        ctx.beginPath();
+        ctx.moveTo(0, this.lineY);
+        ctx.lineTo(this.canvas.width, this.lineY);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    drawDangerCountdown() {
+        if (this.dangerElapsed <= 0) return;
+        const ctx = this.ctx;
+        const remaining = Math.max(1, Math.ceil((CONFIG.GAME.DANGER_SECONDS * 1000 - this.dangerElapsed) / 1000));
+
+        ctx.save();
+        ctx.font = `bold ${Math.min(this.lineY * 0.8, 56)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = '#ff2d2d';
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeText(remaining, this.canvas.width / 2, this.lineY / 2);
+        ctx.fillText(remaining, this.canvas.width / 2, this.lineY / 2);
+        ctx.restore();
+    }
+
+    gameLoop(now = performance.now()) {
+        if (!this.playing) return;
+        const dt = Math.min(now - (this.lastFrame || now), 100); // Limita saltos si la pestaña estuvo oculta
+        this.lastFrame = now;
+
         this.updatePhysics();
+        this.updateDanger(dt);
         this.draw();
-        this.animationFrame = requestAnimationFrame(() => this.gameLoop());
+
+        if (!this.playing) return; // El juego pudo terminar en este cuadro
+        this.animationFrame = requestAnimationFrame((t) => this.gameLoop(t));
     }
 
     handleInput(e) {
+        if (!this.playing) return;
         const rect = this.canvas.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
         const clickY = e.clientY - rect.top;
@@ -231,7 +304,10 @@ class NumbloxGame {
     }
 
     processHit(bubble, index) {
-        if (bubble.value === this.targetResult) {
+        const correct = bubble.value === this.targetResult;
+        this.bubbles.splice(index, 1); // Primero se quita, para que la nueva ecuación use solo lo que queda
+
+        if (correct) {
             this.score += 10;
             this.correctAnswers++;
             this.generateEquation();
@@ -240,7 +316,6 @@ class NumbloxGame {
             this.wrongAnswers++;
         }
 
-        this.bubbles.splice(index, 1);
         this.updateUI();
 
         if (this.lives <= 0) {
@@ -279,7 +354,7 @@ class NumbloxGame {
         this.renderLives();
     }
 
-    endGame() {
+    endGame(reason) {
         this.playing = false;
         clearInterval(this.spawnTimer);
         cancelAnimationFrame(this.animationFrame);
@@ -291,7 +366,9 @@ class NumbloxGame {
         });
 
         setTimeout(() => {
-            alert(`¡Juego terminado! Puntos: ${this.score}`);
+            alert(reason === 'stack'
+                ? `¡Las burbujas llegaron a la línea roja! Puntos: ${this.score}`
+                : `¡Juego terminado! Puntos: ${this.score}`);
             this.showScreen('menuScreen');
         }, 100);
     }
