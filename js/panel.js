@@ -1,8 +1,9 @@
 // Numblox · Panel de personalización (oculto por defecto)
-// Abrir: botón ⚙ discreto (esquina inferior izquierda) o atajo Alt + Shift + C
-import { CONFIG, SPRITE_SLOTS, LIFE_KEYS, EXPLOSION_KEYS, EXPLOSION_GROUP, AUDIO_KEY, AUDIO_GROUP } from './config.js';
+// Abrir: añade ?admin al final de la URL (aparece el botón ⚙) o usa el atajo Alt + Shift + C.
+// El editor NO existe en la página hasta que Firestore confirma que la cuenta es la autorizada.
+import { CONFIG, SPRITE_SLOTS, LIFE_KEYS, EXPLOSION_KEYS, EXPLOSION_GROUP, AUDIO_SLOTS, AUDIO_GROUP } from './config.js';
 import { assets } from './assets.js';
-import { loginAdmin, logoutAdmin, onAdminChange, uploadSprite, uploadAudio, resetSprite } from './firebase.js';
+import { loginAdmin, logoutAdmin, onAdminChange, verifyAdmin, uploadSprite, uploadAudio, resetSprite } from './firebase.js';
 
 const SPRITE_TYPES = ['image/png', 'image/webp'];
 const BACKGROUND_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
@@ -58,15 +59,14 @@ export function initAdminPanel() {
         slots: $('adminSlots')
     };
     const rows = new Map(); // clave -> { thumb, status, bar, reset, input, root }
-    let previewAudio = null; // Audio de la vista previa del panel
-    let previewBtn = null;
-
-    function stopPreview() {
-        if (previewAudio) { previewAudio.pause(); previewAudio = null; }
-        if (previewBtn) previewBtn.textContent = '▶ Escuchar';
-    }
+    const previewStoppers = []; // Una función "detener" por cada fila de audio
+    const unsubscribers = [];   // Suscripciones de las filas del editor (se cancelan al desmontarlo)
+    function stopPreview() { previewStoppers.forEach((stop) => stop()); }
 
     /* ---------- Abrir / cerrar ---------- */
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('admin') || window.location.hash === '#admin') el.toggle.hidden = false;
+
     const openPanel = () => { el.panel.classList.add('open'); el.panel.setAttribute('aria-hidden', 'false'); };
     const closePanel = () => { stopPreview(); el.panel.classList.remove('open'); el.panel.setAttribute('aria-hidden', 'true'); };
     const togglePanel = () => (el.panel.classList.contains('open') ? closePanel() : openPanel());
@@ -90,10 +90,40 @@ export function initAdminPanel() {
     });
     el.logout.addEventListener('click', () => logoutAdmin());
 
-    onAdminChange((user) => {
-        el.loginView.hidden = Boolean(user);
-        el.editor.hidden = !user;
-        el.user.textContent = user ? (user.email || 'Administrador') : '';
+    // El editor permanece cerrado hasta que Firestore confirme que la cuenta es la autorizada.
+    // Cualquier otra cuenta de Google se desconecta al instante.
+    let authRun = 0;
+    onAdminChange(async (user) => {
+        const run = ++authRun;
+        unmountEditor(); // Por defecto no hay editor en la página
+        el.editor.hidden = true;
+        el.loginView.hidden = false;
+        el.user.textContent = '';
+        if (!user) return; // (el mensaje de error, si lo hay, se conserva)
+
+        el.loginError.textContent = 'Verificando permisos…';
+        let allowed = false;
+        let failed = false;
+        try {
+            allowed = await verifyAdmin();
+        } catch (err) {
+            failed = true;
+        }
+        if (run !== authRun) return; // Llegó otro cambio de sesión mientras verificaba
+
+        if (allowed) {
+            mountEditor(); // Solo aquí se construye el editor
+            el.loginError.textContent = '';
+            el.loginView.hidden = true;
+            el.editor.hidden = false;
+            el.user.textContent = user.email || 'Administrador';
+        } else {
+            el.loginError.textContent = failed
+                ? 'No se pudo verificar tu cuenta. Revisa tu conexión e inténtalo de nuevo.'
+                : 'Esta cuenta no está autorizada como administrador.';
+            await logoutAdmin();
+            // Tras cerrar sesión, onAdminChange(null) se ejecuta de nuevo y deja el mensaje visible
+        }
     });
 
     /* ---------- Construcción de la lista ---------- */
@@ -320,14 +350,16 @@ export function initAdminPanel() {
         return root;
     }
 
-    // Música de fondo: un solo audio, suena únicamente durante la partida
-    function buildAudioRow() {
+    // Fila de audio (música de fondo, sonido de explosión…): subir, escuchar y restablecer
+    function buildAudioRow(slot) {
+        const key = slot.key;
+        const kb = Math.round(CONFIG.AUDIO.MAX_BYTES / 1024);
         const root = document.createElement('div');
         root.className = 'slot-row slot-row-all';
         root.innerHTML = `
             <div class="slot-info">
-                <strong>Música de fondo (zona de juego)</strong>
-                <span class="slot-hint">Suena en bucle solo durante la partida. MP3, OGG o M4A de hasta ${Math.round(CONFIG.AUDIO.MAX_BYTES / 1024)} KB (≈ 1 minuto a 96 kbps). Si pesa más, recórtalo o comprímelo.</span>
+                <strong class="audio-label"></strong>
+                <span class="slot-hint audio-hint"></span>
                 <span class="slot-hint audio-state"></span>
                 <span class="slot-status"></span>
                 <div class="slot-progress"><i></i></div>
@@ -337,6 +369,9 @@ export function initAdminPanel() {
                 <button type="button" class="admin-btn" data-act="play">▶ Escuchar</button>
                 <button type="button" class="admin-btn danger" data-act="reset">Restablecer por defecto</button>
             </div>`;
+        root.querySelector('.audio-label').textContent = slot.label;
+        root.querySelector('.audio-hint').textContent =
+            `${slot.hint} MP3, OGG o M4A de hasta ${kb} KB; si pesa más, recórtalo o comprímelo.`;
 
         const input = root.querySelector('input');
         const playBtn = root.querySelector('[data-act="play"]');
@@ -344,24 +379,30 @@ export function initAdminPanel() {
         const state = root.querySelector('.audio-state');
         const status = root.querySelector('.slot-status');
         const bar = root.querySelector('.slot-progress i');
-        previewBtn = playBtn;
+        let preview = null;
 
         const say = (text, type) => { status.textContent = text; status.className = `slot-status ${type || ''}`; };
         const refresh = () => {
-            const has = assets.isCustom(AUDIO_KEY);
-            state.textContent = has ? '● Audio personalizado activo' : '○ Sin audio (el juego suena en silencio)';
+            const has = assets.isCustom(key);
+            state.textContent = has ? '● Audio personalizado activo' : '○ Sin audio asignado';
             playBtn.disabled = !has;
             resetBtn.disabled = !has;
         };
+        const stop = () => {
+            if (preview) { preview.pause(); preview = null; }
+            playBtn.textContent = '▶ Escuchar';
+        };
+        previewStoppers.push(stop);
 
         playBtn.addEventListener('click', () => {
-            if (previewAudio) { stopPreview(); return; }
-            const url = assets.getUrl(AUDIO_KEY);
+            if (preview) { stop(); return; }
+            const url = assets.getUrl(key);
             if (!url) return;
-            previewAudio = new Audio(url);
-            previewAudio.volume = CONFIG.AUDIO.VOLUME;
-            previewAudio.addEventListener('ended', stopPreview);
-            previewAudio.play().catch(() => { say('El navegador no pudo reproducir este audio.', 'error'); stopPreview(); });
+            stopPreview(); // Detiene cualquier otra vista previa
+            preview = new Audio(url);
+            preview.volume = CONFIG.AUDIO.VOLUME;
+            preview.addEventListener('ended', stop);
+            preview.play().catch(() => { say('El navegador no pudo reproducir este audio.', 'error'); stop(); });
             playBtn.textContent = '■ Detener';
         });
 
@@ -371,12 +412,12 @@ export function initAdminPanel() {
             if (!file) return;
             const error = validateAudio(file);
             if (error) { say(error, 'error'); return; }
-            stopPreview();
+            stop();
             input.disabled = true;
             resetBtn.disabled = true;
             say('Subiendo… 0%');
             try {
-                await uploadAudio(AUDIO_KEY, file, (p) => {
+                await uploadAudio(key, file, (p) => {
                     bar.style.width = `${Math.round(p * 100)}%`;
                     say(`Subiendo… ${Math.round(p * 100)}%`);
                 });
@@ -391,12 +432,12 @@ export function initAdminPanel() {
         });
 
         resetBtn.addEventListener('click', async () => {
-            if (!confirm('¿Restablecer la música? El juego quedará sin audio y se eliminará de la nube.')) return;
-            stopPreview();
+            if (!confirm(`¿Restablecer "${slot.label}"? Se eliminará de la nube.`)) return;
+            stop();
             resetBtn.disabled = true;
             say('Eliminando…');
             try {
-                await resetSprite(AUDIO_KEY);
+                await resetSprite(key);
                 say('✔ Restablecido', 'ok');
             } catch (err) {
                 say(friendlyError(err), 'error');
@@ -405,7 +446,7 @@ export function initAdminPanel() {
             }
         });
 
-        assets.subscribe((keys) => { if (keys.includes(AUDIO_KEY)) refresh(); });
+        unsubscribers.push(assets.subscribe((keys) => { if (keys.includes(key)) refresh(); }));
         refresh();
         return root;
     }
@@ -429,11 +470,24 @@ export function initAdminPanel() {
         const audioTitle = document.createElement('h3');
         audioTitle.textContent = AUDIO_GROUP;
         audioSection.appendChild(audioTitle);
-        audioSection.appendChild(buildAudioRow());
+        AUDIO_SLOTS.forEach((slot) => audioSection.appendChild(buildAudioRow(slot)));
         el.slots.appendChild(audioSection);
     }
 
-    buildSlots();
-    rows.forEach((_, key) => refreshRow(key));
-    assets.subscribe((keys) => keys.forEach(refreshRow)); // Previews en vivo
+    // El editor se construye solo para el administrador verificado y se destruye al cerrar sesión
+    function mountEditor() {
+        unmountEditor();
+        buildSlots();
+        rows.forEach((_, key) => refreshRow(key));
+    }
+
+    function unmountEditor() {
+        stopPreview();
+        unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
+        previewStoppers.length = 0;
+        rows.clear();
+        el.slots.innerHTML = '';
+    }
+
+    assets.subscribe((keys) => keys.forEach(refreshRow)); // Previews en vivo (sin filas = no hace nada)
 }

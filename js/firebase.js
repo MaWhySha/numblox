@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import {
     initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-    collection, addDoc, serverTimestamp, doc, onSnapshot, setDoc, deleteDoc
+    collection, addDoc, serverTimestamp, doc, onSnapshot, setDoc, deleteDoc, getDoc
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import {
     getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
@@ -102,6 +102,18 @@ export async function resetSprite(key) {
 }
 
 /* ---------------- AUTENTICACIÓN DEL ADMINISTRADOR ---------------- */
+// Pregunta a Firestore si la cuenta actual es la autorizada. Solo el admin puede leer
+// admin_check/ping (ver firestore.rules); cualquier otra cuenta recibe "permission-denied".
+export async function verifyAdmin() {
+    try {
+        await getDoc(doc(db, 'admin_check', 'ping'));
+        return true;
+    } catch (err) {
+        if (err && err.code === 'permission-denied') return false;
+        throw err; // Error de red u otro: el panel cierra la sesión por seguridad
+    }
+}
+
 export const loginAdmin = () => signInWithPopup(auth, new GoogleAuthProvider());
 export const logoutAdmin = () => signOut(auth);
 export const onAdminChange = (callback) => onAuthStateChanged(auth, callback);

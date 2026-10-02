@@ -1,7 +1,15 @@
-import { CONFIG, EXPLOSION_KEYS, AUDIO_KEY } from './config.js';
+import { CONFIG, EXPLOSION_KEYS, AUDIO_KEY, SFX_KEY } from './config.js';
 import { saveGameMetrics } from './firebase.js';
 import { assets, bindDomSkins } from './assets.js';
 import { initAdminPanel } from './panel.js';
+
+// Convierte una data URL (data:audio/...;base64,XXXX) en bytes para decodificarla
+function dataUrlToArrayBuffer(dataUrl) {
+    const bin = atob(dataUrl.slice(dataUrl.indexOf(',') + 1));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+}
 
 class NumbloxGame {
     constructor() {
@@ -31,6 +39,10 @@ class NumbloxGame {
         this.elapsedMs = 0;       // Tiempo jugado (para acelerar en modo Velocidad)
         this.music = null;
         this.musicUrl = null;
+        this.audioCtx = null;      // Web Audio: sonido de explosión con baja latencia y sin cortes al solaparse
+        this.sfxBuffer = null;
+        this.sfxUrl = null;
+        this.sfxLoading = false;
 
         this.init();
     }
@@ -53,6 +65,7 @@ class NumbloxGame {
         assets.subscribe(() => {
             this.renderLives(); // Las vidas se redibujan si cambia un sprite
             this.syncMusic();   // y la música se actualiza si cambia el audio
+            this.syncSfx();     // igual que el sonido de explosión
         });
         window.__numbloxReady = true; // Señal para el aviso de diagnóstico del index.html
         this.boot();
@@ -94,8 +107,10 @@ class NumbloxGame {
         this.generateEquation();
 
         this.scheduleSpawn();
+        this.ensureAudioCtx(); // Dentro del clic del jugador: el navegador permite el audio
+        this.syncSfx();
         this.syncMusic();
-        this.playMusic(); // Ocurre dentro del clic del jugador, así el navegador permite el audio
+        this.playMusic();
 
         if (this.animationFrame) cancelAnimationFrame(this.animationFrame);
         this.gameLoop();
@@ -130,6 +145,48 @@ class NumbloxGame {
         this.music.loop = true;
         this.music.volume = CONFIG.AUDIO.VOLUME;
         if (this.playing) this.playMusic();
+    }
+
+    ensureAudioCtx() {
+        if (!this.audioCtx) {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return;
+            this.audioCtx = new Ctx();
+        }
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume().catch(() => { });
+    }
+
+    // Decodifica el sonido de explosión una sola vez (cuando cambia el audio en la nube)
+    syncSfx() {
+        const url = assets.getUrl(SFX_KEY);
+        if (url !== this.sfxUrl) {
+            this.sfxUrl = url;
+            this.sfxBuffer = null;
+            this.sfxLoading = false;
+        }
+        if (!url || this.sfxBuffer || this.sfxLoading || !this.audioCtx) return; // Sin contexto aún: carga al iniciar partida
+
+        this.sfxLoading = true;
+        try {
+            this.audioCtx.decodeAudioData(dataUrlToArrayBuffer(url))
+                .then((buffer) => { if (url === this.sfxUrl) this.sfxBuffer = buffer; })
+                .catch((err) => console.warn('No se pudo decodificar el sonido de explosión:', err))
+                .finally(() => { this.sfxLoading = false; });
+        } catch (err) {
+            console.warn('Sonido de explosión no válido:', err);
+            this.sfxLoading = false;
+        }
+    }
+
+    playPopSound() {
+        if (!this.sfxBuffer || !this.audioCtx) return;
+        const source = this.audioCtx.createBufferSource();
+        source.buffer = this.sfxBuffer;
+        const gain = this.audioCtx.createGain();
+        gain.gain.value = CONFIG.AUDIO.SFX_VOLUME;
+        source.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        source.start();
     }
 
     playMusic() {
@@ -422,6 +479,7 @@ class NumbloxGame {
     processHit(bubble, index) {
         const correct = bubble.value === this.targetResult;
         this.spawnExplosion(bubble);
+        this.playPopSound(); // El sonido va junto con la animación
         this.bubbles.splice(index, 1); // Primero se quita, para que la nueva ecuación use solo lo que queda
 
         if (correct) {

@@ -47,7 +47,8 @@ export const CONFIG = {
     },
     AUDIO: {
         MAX_BYTES: 700 * 1024,   // Cabe en un documento de Firestore (≈ 1 min a 96 kbps)
-        VOLUME: 0.5              // 0 a 1
+        VOLUME: 0.5,             // Música de fondo (0 a 1)
+        SFX_VOLUME: 0.8          // Sonido de explosión (0 a 1)
     },
     ASSETS: {
         COLLECTION: 'visuals',     // Firestore: visuals/<clave> (una imagen optimizada por documento)
@@ -59,9 +60,23 @@ export const CONFIG = {
 // Claves de las vidas: life1 ... life5
 export const LIFE_KEYS = Array.from({ length: CONFIG.GAME.MAX_LIVES }, (_, i) => `life${i + 1}`);
 
-// Música de fondo (un solo audio, solo suena en la zona de juego)
-export const AUDIO_KEY = 'audioBgm';
+// Audios personalizables (cada uno se guarda como un documento, igual que las imágenes)
+export const AUDIO_KEY = 'audioBgm';   // Música de fondo: bucle, solo durante la partida
+export const SFX_KEY = 'audioPop';     // Sonido de explosión: al tocar una burbuja
 export const AUDIO_GROUP = 'Audio';
+export const AUDIO_SLOTS = [
+    {
+        key: AUDIO_KEY,
+        label: 'Música de fondo (zona de juego)',
+        hint: 'Suena en bucle solo durante la partida (≈ 1 minuto a 96 kbps).'
+    },
+    {
+        key: SFX_KEY,
+        label: 'Sonido de explosión de burbujas',
+        hint: 'Suena junto con la animación al tocar una burbuja. Mejor corto (menos de 2 segundos).'
+    }
+];
+export const AUDIO_KEYS = AUDIO_SLOTS.map((s) => s.key);
 
 // Frames de la explosión: explosion1 ... explosionN (iguales para todas las burbujas)
 export const EXPLOSION_KEYS = Array.from({ length: CONFIG.GFX.EXPLOSION_FRAMES }, (_, i) => `explosion${i + 1}`);

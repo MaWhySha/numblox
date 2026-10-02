@@ -1,6 +1,6 @@
 // Numblox · Motor de assets dinámicos
 // Escucha Firestore en tiempo real, precarga las imágenes y avisa a quien lo necesite.
-import { CONFIG, AUDIO_KEY } from './config.js';
+import { CONFIG, AUDIO_KEYS } from './config.js';
 import { subscribeVisuals } from './firebase.js';
 
 class AssetManager {
@@ -63,7 +63,7 @@ class AssetManager {
             this.entries[key] = entry;
             if (!prev || prev.url !== entry.url) {
                 // El audio no es una imagen: solo se avisa del cambio (el juego usa getUrl)
-                loads.push(key === AUDIO_KEY ? this._announce(key) : this._load(key, entry.url));
+                loads.push(AUDIO_KEYS.includes(key) ? this._announce(key) : this._load(key, entry.url));
             }
         }
 
