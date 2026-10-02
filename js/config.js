@@ -22,6 +22,10 @@ export const CONFIG = {
         DEFAULT_TEXT_COLOR: '#000000',
         USE_NUMBER_COLORS: false, // true = usa COLORS en lugar del relleno blanco
 
+        EXPLOSION_FRAMES: 5,     // Frames de la animación al tocar una burbuja (4 a 5)
+        EXPLOSION_FRAME_MS: 70,  // Duración de cada frame
+        EXPLOSION_SCALE: 1.6,    // Tamaño de la explosión respecto a la burbuja
+
         LIFE_SIZE: 36,         // Tamaño estándar (px CSS) de cada vida. Subir PNG de 128x128
 
         // Interruptor general: false = ignora todos los sprites de Firebase
@@ -43,6 +47,10 @@ export const CONFIG = {
 
 // Claves de las vidas: life1 ... life5
 export const LIFE_KEYS = Array.from({ length: CONFIG.GAME.MAX_LIVES }, (_, i) => `life${i + 1}`);
+
+// Frames de la explosión: explosion1 ... explosionN (iguales para todas las burbujas)
+export const EXPLOSION_KEYS = Array.from({ length: CONFIG.GFX.EXPLOSION_FRAMES }, (_, i) => `explosion${i + 1}`);
+export const EXPLOSION_GROUP = 'Animación de explosión';
 
 // Catálogo de elementos personalizables (alimenta el panel y el motor de assets)
 // kind: 'background' (cubre el área sin deformar) | 'sprite' (PNG con transparencia)
@@ -76,6 +84,11 @@ export const SPRITE_SLOTS = [
         key, group: 'Vidas', kind: 'sprite',
         label: `Vida ${i + 1}`,
         hint: 'PNG transparente cuadrado · 128×128'
+    })),
+    ...EXPLOSION_KEYS.map((key, i) => ({
+        key, group: EXPLOSION_GROUP, kind: 'sprite',
+        label: `Frame ${i + 1}`,
+        hint: 'PNG transparente · 256×256 · igual para todas las burbujas'
     })),
     {
         key: 'btnPlay', group: 'Botones', kind: 'sprite',

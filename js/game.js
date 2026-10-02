@@ -1,4 +1,4 @@
-import { CONFIG } from './config.js';
+import { CONFIG, EXPLOSION_KEYS } from './config.js';
 import { saveGameMetrics } from './firebase.js';
 import { assets, bindDomSkins } from './assets.js';
 import { initAdminPanel } from './panel.js';
@@ -24,6 +24,8 @@ class NumbloxGame {
         this.lineY = 0;           // Posición de la línea roja
         this.dangerElapsed = 0;   // ms acumulados con alguna burbuja tocando la línea
         this.lastFrame = 0;
+        this.explosions = [];
+        this.nextEquationFromBoard = true; // Alterna: tablero / aleatorio
 
         this.init();
     }
@@ -75,7 +77,6 @@ class NumbloxGame {
         this.resizeCanvas();
         this.resetStats();
         this.lastFrame = 0;
-        this.spawnBubble();      // Primera burbuja: la ecuación sale de lo que hay en el tablero
         this.generateEquation();
 
         if (this.spawnTimer) clearInterval(this.spawnTimer);
@@ -93,15 +94,30 @@ class NumbloxGame {
         this.wrongAnswers = 0;
         this.bubbles = [];
         this.dangerElapsed = 0;
+        this.explosions = [];
+        this.nextEquationFromBoard = true;
         this.updateUI();
     }
 
-    // El número objetivo se elige entre las burbujas que YA están en el tablero
-    // (así siempre hay una respuesta disponible sin esperar a que caiga).
+    // El número objetivo alterna entre dos tipos de turno:
+    //  - "Tablero": sale de una burbuja que YA está en pantalla (respuesta asegurada).
+    //  - "Aleatorio": sale de cualquier dígito, sin garantía de que aparezca pronto;
+    //    mientras tanto las burbujas se van acumulando (esa es la tensión).
+    // Así no se puede acertar tocando "lo único que hay".
     generateEquation() {
-        if (this.bubbles.length === 0) this.spawnBubble(); // Tablero vacío: aparece una de inmediato
-        const pool = this.bubbles.map((b) => b.value);
-        this.targetResult = pool[Math.floor(Math.random() * pool.length)];
+        const wantsBoard = this.nextEquationFromBoard;
+
+        if (wantsBoard && this.bubbles.length > 0) {
+            const pool = this.bubbles.map((b) => b.value);
+            this.targetResult = pool[Math.floor(Math.random() * pool.length)];
+            this.nextEquationFromBoard = false;   // Siguiente turno: aleatorio
+        } else {
+            const { MIN_DIGIT, MAX_DIGIT } = CONFIG.GAME;
+            this.targetResult = MIN_DIGIT + Math.floor(Math.random() * (MAX_DIGIT - MIN_DIGIT + 1));
+            if (this.bubbles.length === 0) this.spawnBubble(); // Tablero vacío: no se queda sin nada en pantalla
+            if (!wantsBoard) this.nextEquationFromBoard = true; // Siguiente turno: tablero
+            // (si tocaba "tablero" pero no había burbujas, el turno "tablero" se conserva para la próxima)
+        }
 
         const numA = Math.floor(Math.random() * (this.targetResult + 1));
         const numB = this.targetResult - numA;
@@ -210,7 +226,33 @@ class NumbloxGame {
 
         this.drawDangerLine();
         for (let b of this.bubbles) this.drawBubble(b);
+        this.drawExplosions();
         this.drawDangerCountdown();
+    }
+
+    // Explosión al tocar una burbuja: mismos frames para todas, centrados donde estaba la burbuja
+    spawnExplosion(b) {
+        if (!EXPLOSION_KEYS.some((k) => assets.getImage(k))) return; // Sin frames = sin animación
+        this.explosions.push({
+            x: b.x,
+            y: b.y,
+            r: b.radius * CONFIG.GFX.GLOBAL_SCALE,
+            start: performance.now()
+        });
+    }
+
+    drawExplosions() {
+        if (this.explosions.length === 0) return;
+        const now = performance.now();
+        const frameMs = CONFIG.GFX.EXPLOSION_FRAME_MS;
+        const frames = EXPLOSION_KEYS.map((k) => assets.getImage(k)).filter(Boolean); // Solo frames subidos, en orden
+
+        this.explosions = this.explosions.filter((e) => Math.floor((now - e.start) / frameMs) < frames.length);
+        for (const e of this.explosions) {
+            const img = frames[Math.floor((now - e.start) / frameMs)];
+            const half = e.r * CONFIG.GFX.EXPLOSION_SCALE;
+            this.drawImageContain(img, e.x - half, e.y - half, half * 2, half * 2);
+        }
     }
 
     // Una burbuja apilada que toca la línea inicia la cuenta regresiva; si se libera, se reinicia
@@ -305,6 +347,7 @@ class NumbloxGame {
 
     processHit(bubble, index) {
         const correct = bubble.value === this.targetResult;
+        this.spawnExplosion(bubble);
         this.bubbles.splice(index, 1); // Primero se quita, para que la nueva ecuación use solo lo que queda
 
         if (correct) {
@@ -354,6 +397,20 @@ class NumbloxGame {
         this.renderLives();
     }
 
+    // Dibuja el tablero congelado hasta que acaben las explosiones (máx. 1.5 s) y llama a done()
+    playOutExplosions(done) {
+        const startedAt = performance.now();
+        const step = () => {
+            this.draw();
+            if (this.explosions.length > 0 && performance.now() - startedAt < 1500) {
+                requestAnimationFrame(step);
+            } else {
+                done();
+            }
+        };
+        requestAnimationFrame(step);
+    }
+
     endGame(reason) {
         this.playing = false;
         clearInterval(this.spawnTimer);
@@ -365,12 +422,13 @@ class NumbloxGame {
             wrongAnswers: this.wrongAnswers
         });
 
-        setTimeout(() => {
+        // Deja terminar las explosiones en curso (p. ej. la de la última vida) y luego muestra el mensaje
+        this.playOutExplosions(() => {
             alert(reason === 'stack'
                 ? `¡Las burbujas llegaron a la línea roja! Puntos: ${this.score}`
                 : `¡Juego terminado! Puntos: ${this.score}`);
             this.showScreen('menuScreen');
-        }, 100);
+        });
     }
 }
 

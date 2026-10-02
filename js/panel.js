@@ -1,6 +1,6 @@
 // Numblox · Panel de personalización (oculto por defecto)
 // Abrir: botón ⚙ discreto (esquina inferior izquierda) o atajo Alt + Shift + C
-import { CONFIG, SPRITE_SLOTS, LIFE_KEYS } from './config.js';
+import { CONFIG, SPRITE_SLOTS, LIFE_KEYS, EXPLOSION_KEYS, EXPLOSION_GROUP } from './config.js';
 import { assets } from './assets.js';
 import { loginAdmin, logoutAdmin, onAdminChange, uploadSprite, resetSprite } from './firebase.js';
 
@@ -236,6 +236,75 @@ export function initAdminPanel() {
         return root;
     }
 
+    // Animación de explosión: subir varios frames de una vez + vista previa
+    function buildExplosionRow() {
+        const root = document.createElement('div');
+        root.className = 'slot-row slot-row-all';
+        root.innerHTML = `
+            <div class="slot-info">
+                <strong>Animación de explosión (todas las burbujas)</strong>
+                <span class="slot-hint">Se reproduce al tocar cualquier burbuja. Sube de 4 a ${EXPLOSION_KEYS.length} imágenes a la vez: se asignan a los frames en orden de nombre (1.png, 2.png…) y reemplazan la animación completa. También puedes cambiar cada frame por separado.</span>
+                <span class="slot-status"></span>
+            </div>
+            <div class="slot-actions">
+                <div class="slot-thumb explosion-preview"><i class="slot-preview"></i></div>
+                <label class="admin-btn">Subir frames<input type="file" hidden multiple accept="${SPRITE_TYPES.join(',')}"></label>
+                <button type="button" class="admin-btn">▶ Probar animación</button>
+            </div>`;
+
+        const input = root.querySelector('input');
+        const playBtn = root.querySelector('button');
+        const preview = root.querySelector('.slot-preview');
+        const status = root.querySelector('.slot-status');
+        const say = (text, type) => { status.textContent = text; status.className = `slot-status ${type || ''}`; };
+
+        playBtn.addEventListener('click', () => {
+            const frames = EXPLOSION_KEYS.map((k) => assets.getImage(k)).filter(Boolean);
+            if (!frames.length) { say('Aún no hay frames subidos.', 'error'); return; }
+            say('');
+            let i = 0;
+            preview.style.backgroundImage = `url("${frames[0].src}")`;
+            const timer = setInterval(() => {
+                i++;
+                if (i >= frames.length) { clearInterval(timer); preview.style.backgroundImage = ''; return; }
+                preview.style.backgroundImage = `url("${frames[i].src}")`;
+            }, CONFIG.GFX.EXPLOSION_FRAME_MS * 3); // Más lenta que en el juego para poder verla
+        });
+
+        input.addEventListener('change', async () => {
+            const files = Array.from(input.files || [])
+                .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+            input.value = '';
+            if (!files.length) return;
+            if (files.length > EXPLOSION_KEYS.length) {
+                say(`Máximo ${EXPLOSION_KEYS.length} imágenes.`, 'error');
+                return;
+            }
+            const slot = SPRITE_SLOTS.find((s) => s.key === EXPLOSION_KEYS[0]);
+            for (const f of files) {
+                const error = validateFile(slot, f);
+                if (error) { say(`${f.name}: ${error}`, 'error'); return; }
+            }
+            const leftovers = EXPLOSION_KEYS.slice(files.length).filter((k) => assets.isCustom(k));
+            if (leftovers.length && !confirm(`Se reemplazará toda la animación y se borrarán ${leftovers.length} frame(s) sobrante(s). ¿Continuar?`)) return;
+
+            input.disabled = true;
+            try {
+                for (let i = 0; i < files.length; i++) {
+                    say(`Subiendo frame ${i + 1}/${files.length}…`);
+                    await uploadSprite(EXPLOSION_KEYS[i], files[i]);
+                }
+                for (const key of leftovers) await resetSprite(key);
+                say(`✔ Animación guardada (${files.length} frames)`, 'ok');
+            } catch (err) {
+                say(friendlyError(err), 'error');
+            } finally {
+                input.disabled = false;
+            }
+        });
+        return root;
+    }
+
     function buildSlots() {
         const groups = [...new Set(SPRITE_SLOTS.map((s) => s.group))];
         for (const group of groups) {
@@ -245,6 +314,7 @@ export function initAdminPanel() {
             title.textContent = group;
             section.appendChild(title);
             if (group === 'Vidas') section.appendChild(buildAllLivesRow());
+            if (group === EXPLOSION_GROUP) section.appendChild(buildExplosionRow());
             SPRITE_SLOTS.filter((s) => s.group === group).forEach((slot) => section.appendChild(buildRow(slot)));
             el.slots.appendChild(section);
         }

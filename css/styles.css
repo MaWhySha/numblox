@@ -570,6 +570,13 @@ body.playing .admin-toggle {
     background: rgba(15, 22, 38, 0.8);
 }
 
+.explosion-preview {
+    width: 96px;
+    height: 96px;
+    margin: 0 auto;
+    cursor: default;
+}
+
 .slot-info {
     display: flex;
     flex-direction: column;
