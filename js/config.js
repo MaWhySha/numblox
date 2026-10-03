@@ -8,6 +8,8 @@ export const CONFIG = {
         MAX_LIVES: 5,
         MIN_DIGIT: 0,         // Solo caen burbujas del 0 al 9
         MAX_DIGIT: 9,
+        SUBTRACT_CHANCE: 0.5,        // Probabilidad de que la operación sea una resta (el resto, suma)
+        TARGET_GUARANTEE_SPAWNS: 3,  // Si la respuesta no está en pantalla: tras estas apariciones sin ella, la siguiente es sí o sí la respuesta
         DANGER_LINE_RATIO: 0.12, // Altura de la línea roja (fracción desde arriba del tablero)
         DANGER_SECONDS: 5,       // Segundos de margen tocando la línea antes de perder
 

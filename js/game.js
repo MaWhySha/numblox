@@ -35,6 +35,8 @@ class NumbloxGame {
         this.explosions = [];
         this.nextEquationFromBoard = true; // Alterna: tablero / aleatorio
         this.digitBag = [];       // Ronda de aparición: los 10 dígitos barajados
+        this.needTarget = false;  // true = la respuesta pedida aún no está en pantalla
+        this.missedSpawns = 0;    // Apariciones seguidas que no fueron la respuesta pedida
         this.speedMode = false;   // false = Zen, true = Velocidad
         this.elapsedMs = 0;       // Tiempo jugado (para acelerar en modo Velocidad)
         this.music = null;
@@ -212,6 +214,8 @@ class NumbloxGame {
         this.explosions = [];
         this.nextEquationFromBoard = true;
         this.digitBag = [];
+        this.needTarget = false;
+        this.missedSpawns = 0;
         this.updateUI();
     }
 
@@ -230,14 +234,36 @@ class NumbloxGame {
         } else {
             const { MIN_DIGIT, MAX_DIGIT } = CONFIG.GAME;
             this.targetResult = MIN_DIGIT + Math.floor(Math.random() * (MAX_DIGIT - MIN_DIGIT + 1));
-            if (this.bubbles.length === 0) this.spawnBubble(); // Tablero vacío: no se queda sin nada en pantalla
             if (!wantsBoard) this.nextEquationFromBoard = true; // Siguiente turno: tablero
             // (si tocaba "tablero" pero no había burbujas, el turno "tablero" se conserva para la próxima)
         }
 
-        const numA = Math.floor(Math.random() * (this.targetResult + 1));
-        const numB = this.targetResult - numA;
-        document.getElementById('targetEquation').innerText = `${numA} + ${numB} = ?`;
+        // Garantía: si la respuesta no está en pantalla, puede salir sola en las próximas
+        // apariciones; si pasan TARGET_GUARANTEE_SPAWNS sin que salga, la siguiente es sí o sí ella.
+        this.needTarget = !this.bubbles.some((b) => b.value === this.targetResult);
+        this.missedSpawns = 0;
+        if (this.bubbles.length === 0) this.spawnBubble(); // Tablero vacío: no se queda sin nada en pantalla
+
+        document.getElementById('targetEquation').innerText = this.buildEquationText(this.targetResult);
+    }
+
+    // Suma o resta con números de un solo dígito: nunca hay negativos ni cifras de dos dígitos.
+    // Aplica igual en modo Zen y en modo Velocidad.
+    buildEquationText(result) {
+        const { MAX_DIGIT, SUBTRACT_CHANCE } = CONFIG.GAME;
+        if (Math.random() < SUBTRACT_CHANCE) {
+            const b = Math.floor(Math.random() * (MAX_DIGIT - result + 1)); // 0 .. (9 - resultado)
+            return `${result + b} − ${b} = ?`;                              // p. ej. 9 − 0 = ?
+        }
+        const a = Math.floor(Math.random() * (result + 1));                 // 0 .. resultado
+        return `${a} + ${result - a} = ?`;
+    }
+
+    // Saca un dígito concreto de la ronda en curso (para que la ronda de 10 no se desbalancee)
+    takeDigit(digit) {
+        const idx = this.digitBag.indexOf(digit);
+        if (idx !== -1) this.digitBag.splice(idx, 1);
+        return digit;
     }
 
     // Rondas de aparición: cada ronda trae los 10 dígitos exactamente una vez, en orden aleatorio
@@ -259,7 +285,8 @@ class NumbloxGame {
         const lane = Math.floor(Math.random() * CONFIG.GAME.LANES);
         const baseRadius = Math.min(this.laneWidth * 0.35, 45); // Ajuste dinámico por pantalla
         const x = (lane * this.laneWidth) + (this.laneWidth / 2);
-        const value = this.nextDigit();
+        const mustBeTarget = this.needTarget && this.missedSpawns >= CONFIG.GAME.TARGET_GUARANTEE_SPAWNS;
+        const value = mustBeTarget ? this.takeDigit(this.targetResult) : this.nextDigit();
 
         this.bubbles.push({
             id: this.nextBubbleId++,
@@ -270,6 +297,11 @@ class NumbloxGame {
             value: value,
             settled: false // true cuando ya no puede seguir cayendo (apilada)
         });
+
+        if (this.needTarget) {
+            if (value === this.targetResult) this.needTarget = false; // La respuesta ya está en pantalla
+            else this.missedSpawns++;
+        }
     }
 
     updatePhysics() {
