@@ -91,6 +91,11 @@ export const SPRITE_SLOTS = [
         hint: 'Imagen completa · recomendado 1920×1080'
     },
     {
+        key: 'logoMenu', group: 'Pantallas', kind: 'sprite',
+        label: 'Logo del menú (cuadro sobre el título)',
+        hint: 'PNG transparente · recomendado 512×512 (cuadrado, o la proporción que quieras)'
+    },
+    {
         key: 'bgModes', group: 'Pantallas', kind: 'background',
         label: 'Fondo de selección de modos y de ritmo',
         hint: 'Imagen completa · recomendado 1920×1080 · se usa en ambas pantallas'

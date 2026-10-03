@@ -1,9 +1,11 @@
-// Numblox · Panel de personalización (oculto por defecto)
-// Abrir: añade ?admin al final de la URL (aparece el botón ⚙) o usa el atajo Alt + Shift + C.
-// El editor NO existe en la página hasta que Firestore confirma que la cuenta es la autorizada.
+// Numblox · Inicio de sesión (alumno / administrador) y panel de personalización
+//  - initAuth(): botón "Iniciar sesión" y su ventana. Alumno = cualquier cuenta de Google (se guarda su registro).
+//    Administrador = solo la cuenta autorizada en las reglas de Firestore.
+//  - El editor NO existe en la página: se construye únicamente cuando Firestore confirma que la
+//    cuenta es la autorizada (openEditor) y se destruye por completo al cerrarlo o cerrar sesión.
 import { CONFIG, SPRITE_SLOTS, LIFE_KEYS, EXPLOSION_KEYS, EXPLOSION_GROUP, AUDIO_SLOTS, AUDIO_GROUP } from './config.js';
 import { assets } from './assets.js';
-import { loginAdmin, logoutAdmin, onAdminChange, verifyAdmin, uploadSprite, uploadAudio, resetSprite } from './firebase.js';
+import { loginWithGoogle, logout, onAuthChange, verifyAdmin, registerStudent, uploadSprite, uploadAudio, resetSprite } from './firebase.js';
 
 const SPRITE_TYPES = ['image/png', 'image/webp'];
 const BACKGROUND_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
@@ -39,92 +41,69 @@ function friendlyError(err) {
     return (err && err.message) || 'Error inesperado.';
 }
 
-function friendlyAuthError(err) {
-    switch (err && err.code) {
-        case 'auth/popup-closed-by-user':
-        case 'auth/cancelled-popup-request': return 'Se cerró la ventana de Google.';
-        case 'auth/popup-blocked': return 'El navegador bloqueó la ventana. Permite las ventanas emergentes.';
-        case 'auth/unauthorized-domain': return 'Dominio no autorizado: agrégalo en Authentication > Settings > Authorized domains.';
-        case 'auth/network-request-failed': return 'Sin conexión.';
-        default: return 'No se pudo iniciar sesión con Google.';
+const EDITOR_TEMPLATE = `
+    <div class="admin-overlay open" id="adminPanel" aria-hidden="false">
+        <div class="admin-sheet" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
+            <header class="admin-header">
+                <h2 id="adminTitle">Panel de edición</h2>
+                <button id="adminClose" class="admin-icon-btn" aria-label="Cerrar">✕</button>
+            </header>
+            <section class="admin-section">
+                <div class="admin-userbar">
+                    <span id="adminUser"></span>
+                    <button id="adminLogout" class="admin-btn">Cerrar sesión</button>
+                </div>
+                <p class="admin-note">Haz clic en una miniatura o arrastra una imagen sobre la fila. Se optimiza sola y se publica al instante para todos.</p>
+                <div id="adminSlots"></div>
+            </section>
+        </div>
+    </div>`;
+
+let mounted = null;  // Editor montado (null = no existe nada del editor en la página)
+let opening = false;
+
+// Destruye todo el editor: el contenedor queda vacío
+export function closeEditor() {
+    if (!mounted) return;
+    mounted.cleanup();
+    mounted = null;
+    const host = document.getElementById('editorRoot');
+    if (host) host.innerHTML = '';
+}
+
+// Construye el editor SOLO si el servidor confirma (otra vez) que la cuenta actual es la administradora.
+export async function openEditor(label) {
+    if (mounted) return true;
+    if (opening) return false;
+    opening = true;
+    try {
+        let allowed = false;
+        try { allowed = await verifyAdmin(); } catch (err) { allowed = false; } // Ante la duda, cerrado
+        if (!allowed) return false;
+        const host = document.getElementById('editorRoot');
+        if (!host) return false;
+        host.innerHTML = EDITOR_TEMPLATE;
+        mounted = { cleanup: buildEditor(host, label) };
+        return true;
+    } finally {
+        opening = false;
     }
 }
 
-export function initAdminPanel() {
-    const $ = (id) => document.getElementById(id);
-    const el = {
-        toggle: $('adminToggle'), panel: $('adminPanel'), close: $('adminClose'),
-        loginView: $('adminLogin'), google: $('adminGoogle'), loginError: $('adminLoginError'),
-        editor: $('adminEditor'), user: $('adminUser'), logout: $('adminLogout'),
-        slots: $('adminSlots')
-    };
+function buildEditor(host, label) {
+    const $ = (id) => host.querySelector('#' + id);
+    const el = { panel: $('adminPanel'), close: $('adminClose'), user: $('adminUser'), logout: $('adminLogout'), slots: $('adminSlots') };
     const rows = new Map(); // clave -> { thumb, status, bar, reset, input, root }
     const previewStoppers = []; // Una función "detener" por cada fila de audio
-    const unsubscribers = [];   // Suscripciones de las filas del editor (se cancelan al desmontarlo)
+    const unsubscribers = [];   // Suscripciones del editor (se cancelan al destruirlo)
     function stopPreview() { previewStoppers.forEach((stop) => stop()); }
 
-    /* ---------- Abrir / cerrar ---------- */
-    const params = new URLSearchParams(window.location.search);
-    if (params.has('admin') || window.location.hash === '#admin') el.toggle.hidden = false;
-
-    const openPanel = () => { el.panel.classList.add('open'); el.panel.setAttribute('aria-hidden', 'false'); };
-    const closePanel = () => { stopPreview(); el.panel.classList.remove('open'); el.panel.setAttribute('aria-hidden', 'true'); };
-    const togglePanel = () => (el.panel.classList.contains('open') ? closePanel() : openPanel());
-
-    el.toggle.addEventListener('click', togglePanel);
-    el.close.addEventListener('click', closePanel);
-    el.panel.addEventListener('pointerdown', (e) => { if (e.target === el.panel) closePanel(); });
-    document.addEventListener('keydown', (e) => {
-        if (e.altKey && e.shiftKey && e.code === 'KeyC') { e.preventDefault(); togglePanel(); }
-        if (e.key === 'Escape') closePanel();
-    });
-
-    /* ---------- Login ---------- */
-    el.google.addEventListener('click', async () => {
-        el.loginError.textContent = '';
-        try {
-            await loginAdmin();
-        } catch (err) {
-            el.loginError.textContent = friendlyAuthError(err);
-        }
-    });
-    el.logout.addEventListener('click', () => logoutAdmin());
-
-    // El editor permanece cerrado hasta que Firestore confirme que la cuenta es la autorizada.
-    // Cualquier otra cuenta de Google se desconecta al instante.
-    let authRun = 0;
-    onAdminChange(async (user) => {
-        const run = ++authRun;
-        unmountEditor(); // Por defecto no hay editor en la página
-        el.editor.hidden = true;
-        el.loginView.hidden = false;
-        el.user.textContent = '';
-        if (!user) return; // (el mensaje de error, si lo hay, se conserva)
-
-        el.loginError.textContent = 'Verificando permisos…';
-        let allowed = false;
-        let failed = false;
-        try {
-            allowed = await verifyAdmin();
-        } catch (err) {
-            failed = true;
-        }
-        if (run !== authRun) return; // Llegó otro cambio de sesión mientras verificaba
-
-        if (allowed) {
-            mountEditor(); // Solo aquí se construye el editor
-            el.loginError.textContent = '';
-            el.loginView.hidden = true;
-            el.editor.hidden = false;
-            el.user.textContent = user.email || 'Administrador';
-        } else {
-            el.loginError.textContent = failed
-                ? 'No se pudo verificar tu cuenta. Revisa tu conexión e inténtalo de nuevo.'
-                : 'Esta cuenta no está autorizada como administrador.';
-            await logoutAdmin();
-            // Tras cerrar sesión, onAdminChange(null) se ejecuta de nuevo y deja el mensaje visible
-        }
-    });
+    el.user.textContent = label || 'Administrador';
+    el.close.addEventListener('click', closeEditor);
+    el.panel.addEventListener('pointerdown', (e) => { if (e.target === el.panel) closeEditor(); });
+    const onKey = (e) => { if (e.key === 'Escape') closeEditor(); };
+    document.addEventListener('keydown', onKey);
+    el.logout.addEventListener('click', () => logout()); // El observador de sesión destruye el editor
 
     /* ---------- Construcción de la lista ---------- */
     function setStatus(key, text, type) {
@@ -474,20 +453,164 @@ export function initAdminPanel() {
         el.slots.appendChild(audioSection);
     }
 
-    // El editor se construye solo para el administrador verificado y se destruye al cerrar sesión
-    function mountEditor() {
-        unmountEditor();
-        buildSlots();
-        rows.forEach((_, key) => refreshRow(key));
-    }
+    buildSlots();
+    rows.forEach((_, key) => refreshRow(key));
+    unsubscribers.push(assets.subscribe((keys) => keys.forEach(refreshRow))); // Previews en vivo
 
-    function unmountEditor() {
+    return function cleanup() {
+        document.removeEventListener('keydown', onKey);
         stopPreview();
         unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
         previewStoppers.length = 0;
         rows.clear();
-        el.slots.innerHTML = '';
+    };
+}
+
+/* =============================================================
+   INICIO DE SESIÓN: ALUMNO O ADMINISTRADOR
+============================================================= */
+function friendlyAuthError(err) {
+    switch (err && err.code) {
+        case 'auth/popup-closed-by-user':
+        case 'auth/cancelled-popup-request': return 'Se cerró la ventana de Google.';
+        case 'auth/popup-blocked': return 'El navegador bloqueó la ventana. Permite las ventanas emergentes.';
+        case 'auth/unauthorized-domain': return 'Dominio no autorizado: agrégalo en Authentication > Settings > Authorized domains.';
+        case 'auth/network-request-failed': return 'Sin conexión.';
+        default: return 'No se pudo iniciar sesión con Google.';
+    }
+}
+
+export function initAuth() {
+    const $ = (id) => document.getElementById(id);
+    const el = {
+        btn: $('loginBtn'), modal: $('authModal'), close: $('authClose'),
+        choose: $('authChoose'), welcome: $('authWelcome'),
+        student: $('authStudent'), admin: $('authAdmin'), msg: $('authMsg'),
+        title: $('authWelcomeTitle'), sub: $('authWelcomeSub'), actions: $('authWelcomeActions'),
+        play: $('authPlay'), logout: $('authLogout')
+    };
+
+    let session = null;     // { user, role: 'student' | 'admin' } o null
+    let loggingIn = false;  // Mientras corre un inicio de sesión, el observador espera
+    let run = 0;
+
+    const firstName = (user) => (user.displayName || user.email || '').split(/[\s@]/)[0] || 'jugador';
+
+    const openModal = () => { el.modal.classList.add('open'); el.modal.setAttribute('aria-hidden', 'false'); };
+    const closeModal = () => { el.modal.classList.remove('open'); el.modal.setAttribute('aria-hidden', 'true'); };
+    const showView = (name) => { el.choose.hidden = name !== 'choose'; el.welcome.hidden = name !== 'welcome'; };
+    const setMsg = (text, type) => { el.msg.textContent = text || ''; el.msg.className = `auth-msg ${type || ''}`; };
+    const setBusy = (busy) => { el.student.disabled = busy; el.admin.disabled = busy; };
+
+    function updateButton() {
+        if (!session) { el.btn.textContent = 'Iniciar sesión'; return; }
+        el.btn.textContent = `${session.role === 'admin' ? '🛠️' : '👤'} ${firstName(session.user)}`;
     }
 
-    assets.subscribe((keys) => keys.forEach(refreshRow)); // Previews en vivo (sin filas = no hace nada)
+    function renderWelcome(justRegistered) {
+        const { user, role } = session;
+        el.title.textContent = role === 'admin' ? `¡Hola, ${firstName(user)}!` : `¡Bienvenido, ${firstName(user)}!`;
+        el.sub.textContent = role === 'admin'
+            ? 'Sesión de administrador activa.'
+            : (justRegistered ? 'Tu cuenta quedó registrada. ¡A jugar!' : 'Tu sesión está iniciada. ¡A jugar!');
+
+        // El acceso al editor se crea solo para el administrador verificado
+        el.actions.innerHTML = '';
+        if (role === 'admin') {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'auth-option secondary';
+            btn.textContent = '🛠️ Abrir panel de edición';
+            btn.addEventListener('click', async () => {
+                closeModal();
+                await openEditor(user.email || firstName(user));
+            });
+            el.actions.appendChild(btn);
+        }
+    }
+
+    // Decide el rol de la cuenta (siempre consultando al servidor) y actualiza la interfaz
+    async function processUser(user, intent) {
+        const myRun = ++run;
+        closeEditor();     // Por defecto no hay editor en la página
+        session = null;
+        updateButton();
+        if (!user) { showView('choose'); return; }
+
+        let isAdmin = false;
+        let failed = false;
+        try { isAdmin = await verifyAdmin(); } catch (err) { failed = true; }
+        if (myRun !== run) return;
+
+        // Eligió "administrador" pero la cuenta no está autorizada: se desconecta y no ve nada
+        if (intent === 'admin' && !isAdmin) {
+            setMsg(failed
+                ? 'No se pudo verificar tu cuenta. Revisa tu conexión e inténtalo de nuevo.'
+                : 'Esta cuenta no está autorizada como administrador.', 'error');
+            await logout();
+            session = null;
+            updateButton();
+            showView('choose');
+            return;
+        }
+
+        session = { user, role: isAdmin ? 'admin' : 'student' };
+        updateButton();
+
+        let registered = false;
+        if (intent === 'student') {
+            try { await registerStudent(user); registered = true; }
+            catch (err) { console.warn('No se pudo registrar al alumno:', err); }
+        }
+        if (myRun !== run) return;
+
+        setMsg('');
+        renderWelcome(registered);
+        showView('welcome');
+
+        if (intent === 'admin') {   // Administrador verificado: abre el editor directamente
+            closeModal();
+            await openEditor(user.email || firstName(user));
+        }
+    }
+
+    async function startLogin(intent) {
+        if (loggingIn) return;
+        loggingIn = true;
+        setBusy(true);
+        setMsg('Conectando con Google…', 'info');
+        try {
+            const cred = await loginWithGoogle();
+            setMsg('Verificando…', 'info');
+            await processUser(cred.user, intent);
+        } catch (err) {
+            setMsg(friendlyAuthError(err), 'error');
+        } finally {
+            loggingIn = false;
+            setBusy(false);
+        }
+    }
+
+    /* ---------- Eventos ---------- */
+    el.btn.addEventListener('click', () => {
+        setMsg('');
+        showView(session ? 'welcome' : 'choose');
+        openModal();
+    });
+    el.close.addEventListener('click', closeModal);
+    el.play.addEventListener('click', closeModal);
+    el.modal.addEventListener('pointerdown', (e) => { if (e.target === el.modal) closeModal(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+    el.student.addEventListener('click', () => startLogin('student'));
+    el.admin.addEventListener('click', () => startLogin('admin'));
+    el.logout.addEventListener('click', async () => {
+        await logout();   // El observador limpia la sesión y destruye el editor
+        closeModal();
+    });
+
+    // Sesión restaurada al recargar o cierre de sesión (los inicios de sesión nuevos los maneja startLogin)
+    onAuthChange((user) => {
+        if (loggingIn) return;
+        processUser(user, null);
+    });
 }

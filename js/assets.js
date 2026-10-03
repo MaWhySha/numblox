@@ -144,12 +144,29 @@ function applyPlayButton() {
     }
 }
 
+// Logo del menú: cuadro blanco por defecto; con sprite se muestra la imagen con su proporción
+function applyLogo() {
+    const box = document.getElementById('menuLogo');
+    if (!box) return;
+    const img = assets.getImage('logoMenu');
+    if (img) {
+        box.classList.add('has-logo');
+        box.style.backgroundImage = `url("${img.src}")`;
+        box.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
+    } else {
+        box.classList.remove('has-logo');
+        box.style.backgroundImage = '';
+        box.style.aspectRatio = '';
+    }
+}
+
 export function bindDomSkins() {
     const applyAll = () => {
         for (const [key, ids] of Object.entries(BACKGROUND_TARGETS)) {
             ids.forEach((id) => applyBackground(key, id));
         }
         applyPlayButton();
+        applyLogo();
     };
     applyAll();
     assets.subscribe(applyAll);

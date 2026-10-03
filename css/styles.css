@@ -350,34 +350,167 @@ body.booting #app {
 /* =============================================================
    PANEL DE PERSONALIZACIÓN
 ============================================================= */
-.admin-toggle {
+/* --- BOTÓN DE INICIAR SESIÓN (arriba a la derecha) --- */
+.login-btn {
     position: fixed;
-    left: 8px;
-    bottom: 8px;
+    top: 10px;
+    right: 12px;
     z-index: 900;
-    width: 32px;
-    height: 32px;
-    font-size: 18px;
-    line-height: 1;
-    color: #fff;
-    background: rgba(0, 0, 0, 0.35);
-    border: none;
-    border-radius: 50%;
-    opacity: 0.12;
+    max-width: 55vw;
+    padding: 8px 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: bold;
+    color: #000;
+    background: #fff;
+    border: 3px solid #000;
+    border-radius: 20px;
+    box-shadow: 0 3px 0 #000;
     cursor: pointer;
-    transition: opacity 0.2s;
 }
 
-.admin-toggle:hover,
-.admin-toggle:focus-visible {
-    opacity: 0.85;
+.login-btn:active {
+    transform: translateY(3px);
+    box-shadow: none;
 }
 
-/* Durante la partida no estorba al jugador */
-body.playing .admin-toggle {
+/* Durante la partida o la carga inicial no estorba */
+body.playing .login-btn,
+body.booting .login-btn {
     display: none;
 }
 
+/* --- VENTANA DE INICIO DE SESIÓN --- */
+.auth-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.65);
+}
+
+.auth-overlay.open {
+    display: flex;
+}
+
+.auth-card {
+    position: relative;
+    width: 100%;
+    max-width: 380px;
+    padding: 30px 22px 20px;
+    text-align: center;
+    font-family: inherit;
+    background: #fff;
+    border: 4px solid #000;
+    border-radius: 22px;
+    box-shadow: 0 6px 0 #000;
+}
+
+.auth-card h2 {
+    margin-bottom: 6px;
+    font-size: 1.5rem;
+    color: #000;
+}
+
+.auth-card .admin-icon-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+}
+
+.auth-note {
+    margin-bottom: 14px;
+    font-size: 0.9rem;
+    color: #555;
+}
+
+.auth-option {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    margin-top: 10px;
+    padding: 12px 14px;
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: bold;
+    color: #000;
+    background: #4dd2ff;
+    border: 3px solid #000;
+    border-radius: 16px;
+    box-shadow: 0 4px 0 #000;
+    cursor: pointer;
+}
+
+.auth-option.secondary {
+    background: #ffd54d;
+}
+
+.auth-option.plain {
+    background: #fff;
+}
+
+.auth-option:active:not(:disabled) {
+    transform: translateY(4px);
+    box-shadow: none;
+}
+
+.auth-option:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.auth-msg {
+    min-height: 1.2em;
+    margin-top: 12px;
+    font-size: 0.85rem;
+    color: #555;
+}
+
+.auth-msg.error {
+    color: #c0243d;
+    font-weight: 600;
+}
+
+.auth-msg.info {
+    color: #1e6fb8;
+}
+
+/* --- LOGO DEL MENÚ --- */
+.menu-logo {
+    width: clamp(80px, 20vh, 150px);
+    aspect-ratio: 1 / 1;
+    margin-bottom: 14px;
+    background-color: #fff;
+    border: 4px solid #000;
+    border-radius: 14px;
+    box-shadow: 0 5px 0 #000;
+}
+
+/* Con logo subido: se ve la imagen completa, con su proporción y sin cuadro */
+.menu-logo.has-logo {
+    width: auto;
+    height: clamp(80px, 22vh, 170px);
+    max-width: 70vw;
+    background-color: transparent;
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+/* =============================================================
+   PANEL DEL EDITOR (solo se construye para el administrador)
+============================================================= */
 .admin-overlay {
     position: fixed;
     inset: 0;

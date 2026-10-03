@@ -114,6 +114,26 @@ export async function verifyAdmin() {
     }
 }
 
-export const loginAdmin = () => signInWithPopup(auth, new GoogleAuthProvider());
-export const logoutAdmin = () => signOut(auth);
-export const onAdminChange = (callback) => onAuthStateChanged(auth, callback);
+// Siempre muestra el selector de cuentas de Google (así se puede elegir otra cuenta)
+export const loginWithGoogle = () => {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    return signInWithPopup(auth, provider);
+};
+export const logout = () => signOut(auth);
+export const onAuthChange = (callback) => onAuthStateChanged(auth, callback);
+
+/* ---------------- REGISTRO DE ALUMNOS ----------------
+   students/<uid> -> { name, email, createdAt, lastLoginAt }
+   Cada alumno solo puede escribir y leer su propio registro; el administrador puede leerlos todos. */
+export async function registerStudent(user) {
+    const ref = doc(db, 'students', user.uid);
+    const snap = await getDoc(ref);
+    const data = {
+        name: (user.displayName || '').slice(0, 100),
+        email: user.email || '',
+        lastLoginAt: serverTimestamp()
+    };
+    if (!snap.exists()) data.createdAt = serverTimestamp(); // Se conserva la fecha del primer ingreso
+    await setDoc(ref, data, { merge: true });
+}

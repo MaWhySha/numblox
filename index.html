@@ -13,6 +13,8 @@
         <!-- PANTALLA MENÚ PRINCIPAL -->
         <div id="menuScreen" class="screen active">
             <div class="menu-content">
+                <!-- Cuadro del logo: blanco por defecto, se reemplaza desde el panel del editor -->
+                <div id="menuLogo" class="menu-logo" role="img" aria-label="Logo de Numblox"></div>
                 <h1 class="game-title">NUMBLOX</h1>
                 <p class="subtitle">Aprende matemáticas jugando</p>
                 <button class="btn-primary" id="btnPlay" aria-label="Jugar">JUGAR</button>
@@ -92,39 +94,38 @@
         </div>
     </div>
 
-    <!-- ACCESO AL PANEL: oculto para el público. Se muestra solo si la URL lleva ?admin (o con Alt + Shift + C) -->
-    <button id="adminToggle" class="admin-toggle" aria-label="Configuración" title="Configuración" hidden>⚙</button>
+    <!-- INICIAR SESIÓN (arriba a la derecha, visible para todos) -->
+    <button id="loginBtn" class="login-btn" type="button">Iniciar sesión</button>
 
-    <!-- PANEL DE PERSONALIZACIÓN (oculto por defecto) -->
-    <div id="adminPanel" class="admin-overlay" aria-hidden="true">
-        <div class="admin-sheet" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
-            <header class="admin-header">
-                <h2 id="adminTitle">Personalización</h2>
-                <button id="adminClose" class="admin-icon-btn" aria-label="Cerrar">✕</button>
-            </header>
+    <!-- VENTANA DE INICIO DE SESIÓN: alumno o administrador -->
+    <div id="authModal" class="auth-overlay" aria-hidden="true">
+        <div class="auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+            <button id="authClose" class="admin-icon-btn" type="button" aria-label="Cerrar">✕</button>
 
-            <!-- Vista: inicio de sesión -->
-            <section id="adminLogin" class="admin-section">
-                <p class="admin-note">Inicia sesión con tu cuenta de Google de administrador para editar los sprites del
-                    juego.</p>
-                <div class="admin-form">
-                    <button id="adminGoogle" type="button" class="admin-btn primary">Entrar con Google</button>
-                    <p id="adminLoginError" class="admin-error" role="alert"></p>
-                </div>
-            </section>
+            <!-- Elegir tipo de acceso -->
+            <div id="authChoose">
+                <h2 id="authTitle">Iniciar sesión</h2>
+                <p class="auth-note">Elige cómo quieres entrar. Se usa tu cuenta de Google.</p>
+                <button id="authStudent" class="auth-option" type="button">🎓 Iniciar sesión como alumno</button>
+                <button id="authAdmin" class="auth-option plain" type="button">🛠️ Iniciar sesión como
+                    administrador</button>
+            </div>
 
-            <!-- Vista: editor -->
-            <section id="adminEditor" class="admin-section" hidden>
-                <div class="admin-userbar">
-                    <span id="adminUser"></span>
-                    <button id="adminLogout" class="admin-btn">Salir</button>
-                </div>
-                <p class="admin-note">Haz clic en una miniatura o arrastra una imagen sobre la fila. Se optimiza sola y
-                    se publica al instante para todos.</p>
-                <div id="adminSlots"></div>
-            </section>
+            <!-- Sesión iniciada -->
+            <div id="authWelcome" hidden>
+                <h2 id="authWelcomeTitle"></h2>
+                <p id="authWelcomeSub" class="auth-note"></p>
+                <button id="authPlay" class="auth-option" type="button">▶ Ir al juego</button>
+                <div id="authWelcomeActions"></div>
+                <button id="authLogout" class="auth-option plain" type="button">Cerrar sesión</button>
+            </div>
+
+            <p id="authMsg" class="auth-msg" role="alert"></p>
         </div>
     </div>
+
+    <!-- El panel del editor NO está en esta página: se construye aquí solo para el administrador verificado -->
+    <div id="editorRoot"></div>
 
     <script>
         // Diagnóstico: si el juego no arranca en 5 s, muestra qué revisar en lugar de una pantalla vacía

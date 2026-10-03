@@ -1,7 +1,7 @@
 import { CONFIG, EXPLOSION_KEYS, AUDIO_KEY, SFX_KEY } from './config.js';
 import { saveGameMetrics } from './firebase.js';
 import { assets, bindDomSkins } from './assets.js';
-import { initAdminPanel } from './panel.js';
+import { initAuth } from './panel.js';
 
 // Convierte una data URL (data:audio/...;base64,XXXX) en bytes para decodificarla
 function dataUrlToArrayBuffer(dataUrl) {
@@ -61,7 +61,7 @@ class NumbloxGame {
 
         // Personalización dinámica
         bindDomSkins();
-        initAdminPanel();
+        initAuth();
         assets.subscribe(() => {
             this.renderLives(); // Las vidas se redibujan si cambia un sprite
             this.syncMusic();   // y la música se actualiza si cambia el audio
