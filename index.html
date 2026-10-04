@@ -5,6 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Numblox</title>
+    <!-- Fuente del eslogan (si no carga, se usa una alternativa del sistema) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/styles.css">
 </head>
 
@@ -16,7 +20,7 @@
                 <!-- Cuadro del logo: blanco por defecto, se reemplaza desde el panel del editor -->
                 <div id="menuLogo" class="menu-logo" role="img" aria-label="Logo de Numblox"></div>
                 <h1 class="game-title">NUMBLOX</h1>
-                <p class="subtitle">Aprende matemáticas jugando</p>
+                <p class="subtitle">Suma y resta, aprende y demuestra</p>
                 <button class="btn-primary" id="btnPlay" aria-label="Jugar">JUGAR</button>
             </div>
         </div>
@@ -84,11 +88,6 @@
                 <div class="cloud-box">
                     <span class="cloud-label">Encuentra la respuesta:</span>
                     <span id="targetEquation">0 + 0 = ?</span>
-                </div>
-
-                <div id="mascotBox">
-                    <!-- Aquí irá el sprite de la mascota en el futuro -->
-                    <div class="mascot-placeholder">🐾</div>
                 </div>
             </div>
         </div>
