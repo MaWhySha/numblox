@@ -113,7 +113,8 @@ const BACKGROUND_TARGETS = {
     bgMenu: ['menuScreen'],
     bgModes: ['modesScreen', 'difficultyScreen'], // La pantalla de ritmo comparte el fondo de modos
     bgGameLeft: ['gameZone'],
-    bgGameRight: ['uiPanel']
+    bgGameRight: ['uiPanel'],
+    bgGameOver: ['gameOverCard']
 };
 
 function applyBackground(key, elementId) {

@@ -253,6 +253,87 @@ body.booting #app {
     color: #000;
 }
 
+/* --- PANEL AL PERDER --- */
+.gameover-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 700;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.6);
+}
+
+.gameover-overlay.open {
+    display: flex;
+}
+
+.gameover-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 440px;
+    min-height: 280px;
+    padding: 28px 22px 60px;
+    text-align: center;
+    background-color: #fff;
+    border: 4px solid #000;
+    border-radius: 22px;
+    box-shadow: 0 6px 0 #000;
+}
+
+.gameover-card h2 {
+    font-size: 1.6rem;
+    color: #000;
+}
+
+.gameover-score {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #000;
+}
+
+.gameover-detail {
+    font-size: 0.95rem;
+    color: #555;
+}
+
+/* Con imagen de fondo: texto blanco con contorno para que se lea sobre cualquier imagen */
+.gameover-card.has-skin h2,
+.gameover-card.has-skin .gameover-score,
+.gameover-card.has-skin .gameover-detail {
+    color: #fff;
+    text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 3px 6px rgba(0, 0, 0, 0.6);
+}
+
+/* Mini botón para regresar */
+.gameover-back {
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 16px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: bold;
+    color: #000;
+    background: #4dd2ff;
+    border: 3px solid #000;
+    border-radius: 16px;
+    box-shadow: 0 3px 0 #000;
+    cursor: pointer;
+}
+
+.gameover-back:active {
+    transform: translateX(-50%) translateY(3px);
+    box-shadow: none;
+}
+
 /* --- VIDAS (5 slots de tamaño estándar) --- */
 #heartsRow {
     --life-size: 36px;

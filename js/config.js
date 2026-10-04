@@ -8,6 +8,8 @@ export const CONFIG = {
         MAX_LIVES: 5,
         MIN_DIGIT: 0,         // Solo caen burbujas del 0 al 9
         MAX_DIGIT: 9,
+        EASE_WITH_STACK: true,       // Ayuda: mientras más llena está una fila, más fácil se pone (ver game.js)
+        LANE_CAPACITY: null,         // Burbujas que caben en una fila antes de la línea roja (null = se calcula, ≈ 6)
         SUBTRACT_CHANCE: 0.5,        // Probabilidad de que la operación sea una resta (el resto, suma)
         TARGET_GUARANTEE_SPAWNS: 3,  // Si la respuesta no está en pantalla: tras estas apariciones sin ella, la siguiente es sí o sí la respuesta
         DANGER_LINE_RATIO: 0.12, // Altura de la línea roja (fracción desde arriba del tablero)
@@ -111,6 +113,11 @@ export const SPRITE_SLOTS = [
         key: 'bgGameRight', group: 'Modo Clásico', kind: 'background',
         label: 'Fondo panel lateral (derecha)',
         hint: 'Recomendado 576×1080 · se centra y recorta sin deformar'
+    },
+    {
+        key: 'bgGameOver', group: 'Modo Clásico', kind: 'background',
+        label: 'Fondo del panel al perder',
+        hint: 'Recomendado 800×600 · se centra y recorta sin deformar (el texto y el botón van encima)'
     },
     ...Array.from({ length: 10 }, (_, n) => ({
         key: `bubble${n}`, group: 'Burbujas numéricas', kind: 'sprite',

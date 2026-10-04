@@ -92,6 +92,17 @@
                 </div>
             </div>
         </div>
+
+        <!-- PANEL AL PERDER (su fondo se cambia desde el editor) -->
+        <div id="gameOverPanel" class="gameover-overlay" aria-hidden="true">
+            <div id="gameOverCard" class="gameover-card" role="dialog" aria-modal="true"
+                aria-labelledby="gameOverTitle">
+                <h2 id="gameOverTitle">¡Juego terminado!</h2>
+                <p id="gameOverScore" class="gameover-score"></p>
+                <p id="gameOverDetail" class="gameover-detail"></p>
+                <button id="btnGameOverBack" class="gameover-back" type="button">← Regresar</button>
+            </div>
+        </div>
     </div>
 
     <!-- INICIAR SESIÓN (arriba a la derecha, visible para todos) -->

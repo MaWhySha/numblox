@@ -59,6 +59,10 @@ class NumbloxGame {
         document.getElementById('btnZen').addEventListener('click', () => this.startGame(false));
         document.getElementById('btnSpeed').addEventListener('click', () => this.startGame(true));
         document.getElementById('btnBackToModes').addEventListener('click', () => this.showScreen('modesScreen'));
+        document.getElementById('btnGameOverBack').addEventListener('click', () => {
+            this.hideGameOver();
+            this.showScreen('menuScreen');
+        });
         this.canvas.addEventListener('pointerdown', (e) => this.handleInput(e));
 
         // Personalización dinámica
@@ -99,6 +103,7 @@ class NumbloxGame {
 
     startGame(speedMode = false) {
         this.speedMode = speedMode;
+        this.hideGameOver();
         this.showScreen('gameScreen');
         this.playing = true;
 
@@ -238,6 +243,16 @@ class NumbloxGame {
             // (si tocaba "tablero" pero no había burbujas, el turno "tablero" se conserva para la próxima)
         }
 
+        // Ayuda 1: mientras más llena está la fila más alta, más probable es que el número pedido sea
+        // uno de los que están en ella (al acertarlo, la fila baja). Con la fila vacía no hace nada.
+        if (CONFIG.GAME.EASE_WITH_STACK && this.bubbles.length > 0) {
+            const { lane, level } = this.stackPressure();
+            if (Math.random() < level) {
+                const inLane = this.bubbles.filter((b) => b.lane === lane).map((b) => b.value);
+                this.targetResult = inLane[Math.floor(Math.random() * inLane.length)];
+            }
+        }
+
         // Garantía: si la respuesta no está en pantalla, puede salir sola en las próximas
         // apariciones; si pasan TARGET_GUARANTEE_SPAWNS sin que salga, la siguiente es sí o sí ella.
         this.needTarget = !this.bubbles.some((b) => b.value === this.targetResult);
@@ -245,6 +260,22 @@ class NumbloxGame {
         if (this.bubbles.length === 0) this.spawnBubble(); // Tablero vacío: no se queda sin nada en pantalla
 
         document.getElementById('targetEquation').innerText = this.buildEquationText(this.targetResult);
+    }
+
+    // Cuántas burbujas caben en una fila antes de tocar la línea roja (≈ 6)
+    laneCapacity() {
+        if (CONFIG.GAME.LANE_CAPACITY) return CONFIG.GAME.LANE_CAPACITY;
+        const r = Math.min(this.laneWidth * 0.35, 45) * CONFIG.GFX.GLOBAL_SCALE;
+        const usable = this.canvas.height - 5 - this.lineY;
+        return Math.max(1, Math.floor(usable / (2 * r + 2)));
+    }
+
+    // Fila más llena y qué tan cerca está de la línea: level 0 = vacía … 1 = al límite
+    stackPressure() {
+        const counts = new Array(CONFIG.GAME.LANES).fill(0);
+        for (const b of this.bubbles) counts[b.lane]++;
+        const max = Math.max(...counts);
+        return { lane: counts.indexOf(max), max, level: Math.min(1, max / this.laneCapacity()) };
     }
 
     // Suma o resta con números de un solo dígito: nunca hay negativos ni cifras de dos dígitos.
@@ -285,7 +316,9 @@ class NumbloxGame {
         const lane = Math.floor(Math.random() * CONFIG.GAME.LANES);
         const baseRadius = Math.min(this.laneWidth * 0.35, 45); // Ajuste dinámico por pantalla
         const x = (lane * this.laneWidth) + (this.laneWidth / 2);
-        const mustBeTarget = this.needTarget && this.missedSpawns >= CONFIG.GAME.TARGET_GUARANTEE_SPAWNS;
+        // Ayuda 2: con cada burbuja más hacia la línea, sube la probabilidad de que la que aparece sea la respuesta
+        const eased = CONFIG.GAME.EASE_WITH_STACK && Math.random() < this.stackPressure().level;
+        const mustBeTarget = eased || (this.needTarget && this.missedSpawns >= CONFIG.GAME.TARGET_GUARANTEE_SPAWNS);
         const value = mustBeTarget ? this.takeDigit(this.targetResult) : this.nextDigit();
 
         this.bubbles.push({
@@ -588,12 +621,26 @@ class NumbloxGame {
         });
 
         // Deja terminar las explosiones en curso (p. ej. la de la última vida) y luego muestra el mensaje
-        this.playOutExplosions(() => {
-            alert(reason === 'stack'
-                ? `¡Las burbujas llegaron a la línea roja! Puntos: ${this.score}`
-                : `¡Juego terminado! Puntos: ${this.score}`);
-            this.showScreen('menuScreen');
-        });
+        this.playOutExplosions(() => this.showGameOver(reason));
+    }
+
+    // Panel al perder (reemplaza al alert): fondo personalizable + mini botón para regresar
+    showGameOver(reason) {
+        document.getElementById('gameOverTitle').innerText = reason === 'stack'
+            ? '¡Las burbujas llegaron a la línea roja!'
+            : '¡Juego terminado!';
+        document.getElementById('gameOverScore').innerText = `Puntos: ${this.score}`;
+        document.getElementById('gameOverDetail').innerText =
+            `Aciertos: ${this.correctAnswers} · Errores: ${this.wrongAnswers}`;
+        const panel = document.getElementById('gameOverPanel');
+        panel.classList.add('open');
+        panel.setAttribute('aria-hidden', 'false');
+    }
+
+    hideGameOver() {
+        const panel = document.getElementById('gameOverPanel');
+        panel.classList.remove('open');
+        panel.setAttribute('aria-hidden', 'true');
     }
 }
 
