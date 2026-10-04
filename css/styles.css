@@ -181,6 +181,27 @@ body.booting #app {
     margin-top: 4px;
 }
 
+/* Tarjeta con sprite: solo se ve la imagen (sin icono ni textos), con su proporción */
+.mode-card.card-sprite {
+    padding: 0;
+    background-color: transparent;
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.mode-card.card-sprite>* {
+    display: none;
+}
+
+.mode-card.card-sprite:active:not(:disabled) {
+    transform: scale(0.95);
+    box-shadow: none;
+}
+
 .mode-card.locked {
     opacity: 0.55;
     filter: grayscale(0.6);

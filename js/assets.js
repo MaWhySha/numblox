@@ -145,6 +145,32 @@ function applyPlayButton() {
     }
 }
 
+// Tarjetas de modos y de ritmo: con sprite, la tarjeta pasa a ser solo la imagen (con su proporción)
+const CARD_TARGETS = {
+    cardClassic: 'btnModeClassic',
+    cardTimed: 'btnModeTimed',
+    cardChallenge: 'btnModeChallenge',
+    cardZen: 'btnZen',
+    cardSpeed: 'btnSpeed'
+};
+
+function applyCards() {
+    for (const [key, id] of Object.entries(CARD_TARGETS)) {
+        const card = document.getElementById(id);
+        if (!card) continue;
+        const img = assets.getImage(key);
+        if (img) {
+            card.classList.add('card-sprite');
+            card.style.backgroundImage = `url("${img.src}")`;
+            card.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
+        } else {
+            card.classList.remove('card-sprite');
+            card.style.backgroundImage = '';
+            card.style.aspectRatio = '';
+        }
+    }
+}
+
 // Logo del menú: cuadro blanco por defecto; con sprite se muestra la imagen con su proporción
 function applyLogo() {
     const box = document.getElementById('menuLogo');
@@ -168,6 +194,7 @@ export function bindDomSkins() {
         }
         applyPlayButton();
         applyLogo();
+        applyCards();
     };
     applyAll();
     assets.subscribe(applyAll);

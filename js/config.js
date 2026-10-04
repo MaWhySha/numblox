@@ -104,6 +104,17 @@ export const SPRITE_SLOTS = [
         label: 'Fondo de selección de modos y de ritmo',
         hint: 'Imagen completa · recomendado 1920×1080 · se usa en ambas pantallas'
     },
+    ...[
+        ['cardClassic', 'Clásico'],
+        ['cardTimed', 'Contrarreloj (próximamente)'],
+        ['cardChallenge', 'Desafío (próximamente)'],
+        ['cardZen', 'Zen'],
+        ['cardSpeed', 'Velocidad']
+    ].map(([key, name]) => ({
+        key, group: 'Tarjetas de modos', kind: 'sprite',
+        label: `Tarjeta: ${name}`,
+        hint: 'PNG transparente · recomendado 400×300 · reemplaza toda la tarjeta y conserva su proporción'
+    })),
     {
         key: 'bgGameLeft', group: 'Modo Clásico', kind: 'background',
         label: 'Fondo zona de juego (izquierda)',
