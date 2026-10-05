@@ -65,10 +65,16 @@ export const CONFIG = {
 export const LIFE_KEYS = Array.from({ length: CONFIG.GAME.MAX_LIVES }, (_, i) => `life${i + 1}`);
 
 // Audios personalizables (cada uno se guarda como un documento, igual que las imágenes)
+export const MENU_KEY = 'audioMenu';   // Música del menú: bucle, en inicio, modos y ritmo
 export const AUDIO_KEY = 'audioBgm';   // Música de fondo: bucle, solo durante la partida
 export const SFX_KEY = 'audioPop';     // Sonido de explosión: al tocar una burbuja
 export const AUDIO_GROUP = 'Audio';
 export const AUDIO_SLOTS = [
+    {
+        key: MENU_KEY,
+        label: 'Música del menú (inicio, modos y ritmo)',
+        hint: 'Suena en bucle desde que se entra a la página y en todo el menú; se detiene al empezar a jugar.'
+    },
     {
         key: AUDIO_KEY,
         label: 'Música de fondo (zona de juego)',

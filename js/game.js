@@ -1,4 +1,4 @@
-import { CONFIG, EXPLOSION_KEYS, AUDIO_KEY, SFX_KEY } from './config.js';
+import { CONFIG, EXPLOSION_KEYS, AUDIO_KEY, SFX_KEY, MENU_KEY } from './config.js';
 import { saveGameMetrics } from './firebase.js';
 import { assets, bindDomSkins } from './assets.js';
 import { initAuth } from './panel.js';
@@ -46,6 +46,10 @@ class NumbloxGame {
         this.sfxUrl = null;
         this.sfxLoading = false;
         this.leaveTimer = null;    // Temporizador que retira la pantalla anterior tras el fundido
+        this.menuMusic = null;     // Música del menú (inicio, modos y ritmo)
+        this.menuMusicUrl = null;
+        this.inMenu = true;        // false mientras se está en la pantalla de juego
+        this.unlockArmed = false;  // Esperando el primer toque del usuario para poder sonar
 
         this.init();
     }
@@ -77,6 +81,7 @@ class NumbloxGame {
             this.renderLives(); // Las vidas se redibujan si cambia un sprite
             this.syncMusic();   // y la música se actualiza si cambia el audio
             this.syncSfx();     // igual que el sonido de explosión
+            this.syncMenuMusic(); // y la música del menú
         });
         window.__numbloxReady = true; // Señal para el aviso de diagnóstico del index.html
         this.boot();
@@ -96,7 +101,11 @@ class NumbloxGame {
     // que se queda visible debajo hasta que termina el fundido. Así nunca se ve un fondo negro intermedio.
     showScreen(id) {
         document.body.classList.toggle('playing', id === 'gameScreen');
-        if (id !== 'gameScreen') this.stopMusic(); // La música solo suena en la zona de juego
+        if (id !== 'gameScreen') this.stopMusic(); // La música del juego solo suena en la zona de juego
+
+        // La música del menú suena en todo el menú y se pausa al entrar a jugar
+        this.inMenu = id !== 'gameScreen';
+        if (this.inMenu) this.playMenuMusic(); else this.stopMenuMusic();
 
         const screens = Array.from(document.querySelectorAll('.screen'));
         const next = screens.find((s) => s.id === id);
@@ -224,6 +233,44 @@ class NumbloxGame {
         if (!this.music) return;
         const p = this.music.play();
         if (p && p.catch) p.catch(() => { }); // Si el navegador bloquea el audio, el juego sigue en silencio
+    }
+
+    // Música del menú: en bucle desde que se abre la página. Los navegadores solo permiten
+    // reproducir audio tras el primer toque o tecla del usuario; si bloquean el inicio
+    // automático, arranca en cuanto el usuario toca cualquier cosa (sin salirse del menú).
+    syncMenuMusic() {
+        const url = assets.getUrl(MENU_KEY);
+        if (url === this.menuMusicUrl) return;
+        this.stopMenuMusic();
+        this.menuMusicUrl = url;
+        if (!url) { this.menuMusic = null; return; }
+        this.menuMusic = new Audio(url);
+        this.menuMusic.loop = true;
+        this.menuMusic.volume = CONFIG.AUDIO.VOLUME;
+        this.playMenuMusic();
+    }
+
+    playMenuMusic() {
+        if (!this.menuMusic || !this.inMenu) return; // Durante la partida no suena
+        const p = this.menuMusic.play();
+        if (p && p.catch) p.catch(() => this.armMenuMusicUnlock());
+    }
+
+    stopMenuMusic() {
+        if (this.menuMusic) this.menuMusic.pause(); // Pausa: al volver al menú sigue donde iba
+    }
+
+    armMenuMusicUnlock() {
+        if (this.unlockArmed) return;
+        this.unlockArmed = true;
+        const unlock = () => {
+            document.removeEventListener('click', unlock);
+            document.removeEventListener('keydown', unlock);
+            this.unlockArmed = false;
+            this.playMenuMusic(); // Solo suena si sigue en el menú
+        };
+        document.addEventListener('click', unlock);
+        document.addEventListener('keydown', unlock);
     }
 
     stopMusic() {
