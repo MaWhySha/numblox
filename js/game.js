@@ -45,6 +45,7 @@ class NumbloxGame {
         this.sfxBuffer = null;
         this.sfxUrl = null;
         this.sfxLoading = false;
+        this.leaveTimer = null;    // Temporizador que retira la pantalla anterior tras el fundido
 
         this.init();
     }
@@ -91,10 +92,29 @@ class NumbloxGame {
         document.body.classList.remove('booting');
     }
 
+    // Fundido cruzado: la pantalla nueva aparece (de transparente a opaca) ENCIMA de la anterior,
+    // que se queda visible debajo hasta que termina el fundido. Así nunca se ve un fondo negro intermedio.
     showScreen(id) {
-        document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === id));
         document.body.classList.toggle('playing', id === 'gameScreen');
         if (id !== 'gameScreen') this.stopMusic(); // La música solo suena en la zona de juego
+
+        const screens = Array.from(document.querySelectorAll('.screen'));
+        const next = screens.find((s) => s.id === id);
+        if (!next) return;
+
+        const current = screens.find((s) => s.classList.contains('active'));
+        clearTimeout(this.leaveTimer);
+        screens.forEach((s) => s.classList.remove('leaving'));
+        if (current === next) return; // Ya está en esa pantalla: nada que animar
+
+        if (current) {
+            current.classList.remove('active');
+            current.classList.add('leaving'); // Sigue visible debajo mientras entra la nueva
+        }
+        next.classList.add('active');
+        this.leaveTimer = setTimeout(() => {
+            screens.forEach((s) => s.classList.remove('leaving'));
+        }, 450); // Un poco más que la duración del fundido (0,4 s)
     }
 
     resizeCanvas() {

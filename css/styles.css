@@ -39,6 +39,15 @@ body.booting #app {
 
 .screen.active {
     display: flex;
+    z-index: 2;
+    /* La pantalla nueva queda por encima de la que se va */
+}
+
+/* Pantalla que se va: sigue visible debajo mientras la nueva hace el fundido, sin recibir clics */
+.screen.leaving {
+    display: flex;
+    z-index: 1;
+    pointer-events: none;
 }
 
 /* Fondo personalizado: cubre toda el área, centrado y sin deformarse */
@@ -892,18 +901,6 @@ body.booting .login-btn {
    Usan opacidad y movimiento corto. "backwards" evita que la animación
    mantenga el estado final y pise los efectos de pulsar los botones.
 ============================================================= */
-@keyframes screenIn {
-    from {
-        opacity: 0;
-        transform: translateY(14px);
-    }
-
-    to {
-        opacity: 1;
-        transform: none;
-    }
-}
-
 @keyframes screenFade {
     from {
         opacity: 0;
@@ -960,14 +957,10 @@ body.booting .login-btn {
     }
 }
 
-/* Cambio de pantalla: menú -> modos -> ritmo */
+/* Cambio de pantalla: fundido cruzado limpio (sin movimiento ni parpadeo negro).
+   Es solo opacidad, así que tampoco altera el área táctil del canvas. */
 .screen.active {
-    animation: screenIn 0.35s ease backwards;
-}
-
-/* La pantalla de juego solo hace fundido (sin mover nada, para no alterar el área táctil del canvas) */
-#gameScreen.active {
-    animation: screenFade 0.3s ease backwards;
+    animation: screenFade 0.4s ease-in-out backwards;
 }
 
 /* Tarjetas de modos y de ritmo: entran una tras otra */
