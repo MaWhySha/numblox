@@ -63,6 +63,10 @@ class NumbloxGame {
             this.hideGameOver();
             this.showScreen('menuScreen');
         });
+        // Seguir jugando: nueva partida con el mismo ritmo (Zen o Velocidad)
+        document.getElementById('btnGameOverRetry').addEventListener('click', () => {
+            this.startGame(this.speedMode);
+        });
         this.canvas.addEventListener('pointerdown', (e) => this.handleInput(e));
 
         // Personalización dinámica
