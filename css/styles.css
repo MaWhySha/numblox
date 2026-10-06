@@ -316,7 +316,7 @@ body.booting #app {
     width: 100%;
     max-width: 440px;
     min-height: 280px;
-    padding: 28px 22px 64px;
+    padding: 28px 22px 22px;
     text-align: center;
     background-color: #fff;
     border: 4px solid #000;
@@ -345,20 +345,38 @@ body.booting #app {
 .gameover-card.has-skin .gameover-score,
 .gameover-card.has-skin .gameover-detail {
     color: #fff;
-    text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 3px 6px rgba(0, 0, 0, 0.6);
+    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 3px 6px rgba(0, 0, 0, 0.6);
+}
+
+.gameover-card.has-skin .gameover-detail {
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+/* El contorno se dibuja DETRÁS de la letra (paint-order): así no la adelgaza ni la "corta", aunque el texto sea pequeño */
+@supports (paint-order: stroke fill) {
+
+    .gameover-card.has-skin h2,
+    .gameover-card.has-skin .gameover-score {
+        -webkit-text-stroke: 6px #000;
+        paint-order: stroke fill;
+        text-shadow: 0 3px 6px rgba(0, 0, 0, 0.6);
+    }
+
+    .gameover-card.has-skin .gameover-detail {
+        -webkit-text-stroke: 5px #000;
+        paint-order: stroke fill;
+        text-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
+    }
 }
 
 /* Mini botones del panel: seguir jugando y regresar */
 .gameover-actions {
-    position: absolute;
-    bottom: 14px;
-    left: 50%;
-    transform: translateX(-50%);
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
     gap: 10px;
-    width: calc(100% - 24px);
+    margin-top: 14px;
 }
 
 .gameover-btn {
