@@ -3,9 +3,15 @@
 //    Administrador = solo la cuenta autorizada en las reglas de Firestore.
 //  - El editor NO existe en la página: se construye únicamente cuando Firestore confirma que la
 //    cuenta es la autorizada (openEditor) y se destruye por completo al cerrarlo o cerrar sesión.
-import { CONFIG, SPRITE_SLOTS, LIFE_KEYS, EXPLOSION_KEYS, EXPLOSION_GROUP, AUDIO_SLOTS, AUDIO_GROUP } from './config.js';
+import {
+    CONFIG, SPRITE_SLOTS, LIFE_KEYS, EXPLOSION_KEYS, EXPLOSION_GROUP, AUDIO_SLOTS, AUDIO_GROUP,
+    DEFAULT_WORDS, MAX_WORDS, normalizeWord, isValidWord, maskWord
+} from './config.js';
 import { assets } from './assets.js';
-import { loginWithGoogle, logout, onAuthChange, verifyAdmin, registerStudent, uploadSprite, uploadAudio, resetSprite } from './firebase.js';
+import {
+    loginWithGoogle, logout, onAuthChange, verifyAdmin, registerStudent,
+    uploadSprite, uploadAudio, resetSprite, subscribeWords, saveWords, resetWords
+} from './firebase.js';
 
 const SPRITE_TYPES = ['image/png', 'image/webp'];
 const BACKGROUND_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
@@ -430,6 +436,115 @@ function buildEditor(host, label) {
         return root;
     }
 
+    // Herramienta de palabras del modo Vocales: el juego les quita las vocales solo y las usa al azar
+    function buildWordsSection() {
+        const section = document.createElement('section');
+        section.className = 'slot-group';
+        const title = document.createElement('h3');
+        title.textContent = 'Palabras del modo Vocales';
+        section.appendChild(title);
+
+        const root = document.createElement('div');
+        root.className = 'slot-row slot-row-all';
+        root.innerHTML = `
+            <div class="slot-info">
+                <strong>Lista de palabras (4 a 6 letras)</strong>
+                <span class="slot-hint">Escribe una o varias palabras separadas por espacio, coma o salto de línea. Se quitan los acentos solos; la Ñ sí se admite. El juego les oculta las vocales y las usa al azar, todas antes de repetir. Si la lista queda vacía, se usa la lista básica.</span>
+                <textarea class="words-input" rows="2" placeholder="casa, mesa, gato"></textarea>
+                <div class="words-actions">
+                    <button type="button" class="admin-btn primary" data-act="add">Agregar palabras</button>
+                    <button type="button" class="admin-btn danger" data-act="reset">Restablecer lista por defecto</button>
+                </div>
+                <span class="slot-status"></span>
+                <span class="slot-hint words-count"></span>
+                <div class="words-list"></div>
+            </div>`;
+        section.appendChild(root);
+
+        const input = root.querySelector('.words-input');
+        const addBtn = root.querySelector('[data-act="add"]');
+        const resetBtn = root.querySelector('[data-act="reset"]');
+        const status = root.querySelector('.slot-status');
+        const count = root.querySelector('.words-count');
+        const list = root.querySelector('.words-list');
+        let custom = [];   // Lista guardada en Firestore (vacía = se usa la básica)
+
+        const say = (text, type) => { status.textContent = text; status.className = `slot-status ${type || ''}`; };
+        const base = () => (custom.length ? custom.slice() : DEFAULT_WORDS.slice());
+
+        function render() {
+            const words = base();
+            count.textContent = custom.length
+                ? `${words.length} palabras en la lista personalizada (máximo ${MAX_WORDS}).`
+                : `Usando la lista básica (${words.length} palabras). Al agregar o quitar una, se crea tu lista personalizada a partir de ella.`;
+            resetBtn.disabled = custom.length === 0;
+            list.innerHTML = '';
+            words.forEach((word) => {
+                const chip = document.createElement('span');
+                chip.className = 'word-chip';
+                const masked = document.createElement('b');
+                masked.textContent = maskWord(word);
+                const full = document.createElement('small');
+                full.textContent = word;
+                const del = document.createElement('button');
+                del.type = 'button';
+                del.textContent = '✕';
+                del.setAttribute('aria-label', `Quitar ${word}`);
+                del.addEventListener('click', () => removeWord(word));
+                chip.appendChild(masked);
+                chip.appendChild(full);
+                chip.appendChild(del);
+                list.appendChild(chip);
+            });
+        }
+
+        async function persist(words, okText) {
+            addBtn.disabled = true;
+            try {
+                if (words.length === 0) await resetWords();      // Sin palabras = lista básica
+                else await saveWords(words);
+                say(okText, 'ok');
+            } catch (err) {
+                say(friendlyError(err), 'error');
+            } finally {
+                addBtn.disabled = false;
+            }
+        }
+
+        async function addWords() {
+            const parts = input.value.split(/[\s,;]+/).map(normalizeWord).filter(Boolean);
+            const words = base();
+            const added = [], invalid = [];
+            for (const w of parts) {
+                if (!isValidWord(w)) invalid.push(w);
+                else if (!words.includes(w) && !added.includes(w)) added.push(w);
+            }
+            if (!parts.length) { say('Escribe al menos una palabra.', 'error'); return; }
+            if (words.length + added.length > MAX_WORDS) { say(`Máximo ${MAX_WORDS} palabras.`, 'error'); return; }
+            if (!added.length) {
+                say(invalid.length ? `No válidas (4 a 6 letras y al menos una vocal): ${invalid.join(', ')}` : 'Esas palabras ya están en la lista.', 'error');
+                return;
+            }
+            await persist([...words, ...added], `✔ Agregadas: ${added.join(', ')}` + (invalid.length ? ` · No válidas: ${invalid.join(', ')}` : ''));
+            input.value = '';
+        }
+
+        async function removeWord(word) {
+            const left = base().filter((w) => w !== word);
+            await persist(left, left.length ? `✔ Quitada: ${word}` : '✔ Lista vacía: se usará la lista básica');
+        }
+
+        addBtn.addEventListener('click', addWords);
+        resetBtn.addEventListener('click', async () => {
+            if (!confirm('¿Volver a la lista básica de palabras? Se perderá tu lista personalizada.')) return;
+            await persist([], '✔ Lista restablecida a la básica');
+        });
+
+        unsubscribers.push(subscribeWords((words) => { custom = words; render(); }));
+        render();
+        return section;
+    }
+
     function buildSlots() {
         const groups = [...new Set(SPRITE_SLOTS.map((s) => s.group))];
         for (const group of groups) {
@@ -451,6 +566,8 @@ function buildEditor(host, label) {
         audioSection.appendChild(audioTitle);
         AUDIO_SLOTS.forEach((slot) => audioSection.appendChild(buildAudioRow(slot)));
         el.slots.appendChild(audioSection);
+
+        el.slots.appendChild(buildWordsSection());
     }
 
     buildSlots();

@@ -449,6 +449,20 @@ body.booting #app {
     font-weight: bold;
 }
 
+/* Palabra del modo Vocales: consonantes fijas, huecos y vocales ya encontradas */
+#targetEquation.word-display {
+    letter-spacing: 8px;
+}
+
+.word-display .w-blank {
+    color: #9aa5b1;
+}
+
+.word-display .w-found {
+    color: #1f9d55;
+    text-shadow: 0 0 8px rgba(46, 204, 113, 0.5);
+}
+
 #targetEquation {
     display: block;
     font-size: 2.2rem;
@@ -864,6 +878,63 @@ body.booting .login-btn {
     height: 100%;
     background: #2f7df6;
     transition: width 0.15s;
+}
+
+.words-input {
+    width: 100%;
+    margin-top: 6px;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    color: #fff;
+    background: #19233a;
+    border: 1px solid #33415f;
+    border-radius: 8px;
+    resize: vertical;
+}
+
+.words-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0 4px;
+}
+
+.words-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 260px;
+    margin-top: 6px;
+    overflow-y: auto;
+}
+
+.word-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: 0.82rem;
+    color: #e8eefc;
+    background: #25304a;
+    border-radius: 999px;
+}
+
+.word-chip b {
+    letter-spacing: 1px;
+}
+
+.word-chip small {
+    color: #8da0c8;
+}
+
+.word-chip button {
+    padding: 0 4px;
+    font-size: 0.8rem;
+    color: #ff9aa8;
+    background: none;
+    border: none;
+    cursor: pointer;
 }
 
 .slot-actions {

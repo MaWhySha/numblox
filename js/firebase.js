@@ -101,6 +101,24 @@ export async function resetSprite(key) {
     await deleteDoc(doc(db, CONFIG.ASSETS.COLLECTION, key));
 }
 
+/* ---------------- LISTA DE PALABRAS (MODO VOCALES) ----------------
+   settings/words -> { list: ["CASA", ...], updatedAt }   Sin documento = lista básica del juego. */
+export function subscribeWords(onData) {
+    return onSnapshot(
+        doc(db, 'settings', 'words'),
+        (snap) => onData(snap.exists() && Array.isArray(snap.data().list) ? snap.data().list : []),
+        (err) => { console.error('Error leyendo las palabras:', err); onData([]); }
+    );
+}
+
+export async function saveWords(list) {
+    await setDoc(doc(db, 'settings', 'words'), { list, updatedAt: Date.now() });
+}
+
+export async function resetWords() {
+    await deleteDoc(doc(db, 'settings', 'words'));
+}
+
 /* ---------------- AUTENTICACIÓN DEL ADMINISTRADOR ---------------- */
 // Pregunta a Firestore si la cuenta actual es la autorizada. Solo el admin puede leer
 // admin_check/ping (ver firestore.rules); cualquier otra cuenta recibe "permission-denied".

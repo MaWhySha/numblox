@@ -1,5 +1,8 @@
-import { CONFIG, EXPLOSION_KEYS, AUDIO_KEY, SFX_KEY, MENU_KEY } from './config.js';
-import { saveGameMetrics } from './firebase.js';
+import {
+    CONFIG, EXPLOSION_KEYS, AUDIO_KEY, SFX_KEY, MENU_KEY, AUDIO_VOWELS_KEY,
+    VOWELS, DEFAULT_WORDS, normalizeWord, isValidWord
+} from './config.js';
+import { saveGameMetrics, subscribeWords } from './firebase.js';
 import { assets, bindDomSkins } from './assets.js';
 import { initAuth } from './panel.js';
 
@@ -51,6 +54,17 @@ class NumbloxGame {
         this.inMenu = true;        // false mientras se está en la pantalla de juego
         this.unlockArmed = false;  // Esperando el primer toque del usuario para poder sonar
 
+        // Modo Vocales
+        this.selectedMode = 'numbers'; // 'numbers' | 'vowels': lo elige el jugador en la pantalla de modos
+        this.mode = 'numbers';         // Modo de la partida en curso
+        this.words = DEFAULT_WORDS.slice();
+        this.wordsSubscribed = false;
+        this.wordBag = [];             // Palabras barajadas: salen todas antes de repetir
+        this.currentWord = null;
+        this.found = new Set();        // Vocales de la palabra ya marcadas como correctas
+        this.wordIndex = 0;            // Nº de palabra (para saber qué errores son de la palabra actual)
+        this.rowSeq = 0;               // Identificador de cada fila de 5 burbujas
+
         this.init();
     }
 
@@ -59,7 +73,17 @@ class NumbloxGame {
 
         // Flujo: Menú -> Selección de modos -> Selección de ritmo -> Partida
         document.getElementById('btnPlay').addEventListener('click', () => this.showScreen('modesScreen'));
-        document.getElementById('btnModeClassic').addEventListener('click', () => this.showScreen('difficultyScreen'));
+        document.getElementById('btnModeClassic').addEventListener('click', () => {
+            this.selectedMode = 'numbers';
+            this.syncMusic();
+            this.showScreen('difficultyScreen');
+        });
+        document.getElementById('btnModeVowels').addEventListener('click', () => {
+            this.selectedMode = 'vowels';
+            this.ensureWordsSub();
+            this.syncMusic();
+            this.showScreen('difficultyScreen');
+        });
         document.getElementById('btnBackToMenu').addEventListener('click', () => this.showScreen('menuScreen'));
         document.getElementById('btnZen').addEventListener('click', () => this.startGame(false));
         document.getElementById('btnSpeed').addEventListener('click', () => this.startGame(true));
@@ -136,6 +160,7 @@ class NumbloxGame {
 
     startGame(speedMode = false) {
         this.speedMode = speedMode;
+        this.mode = this.selectedMode;
         this.hideGameOver();
         this.showScreen('gameScreen');
         this.playing = true;
@@ -144,7 +169,13 @@ class NumbloxGame {
         this.resetStats();
         this.lastFrame = 0;
         this.elapsedMs = 0;
-        this.generateEquation();
+        this.setupModeUI();
+        if (this.mode === 'vowels') {
+            this.startNewWord();
+            this.spawnRow();           // Primera fila de 5 burbujas
+        } else {
+            this.generateEquation();
+        }
 
         this.scheduleSpawn();
         this.ensureAudioCtx(); // Dentro del clic del jugador: el navegador permite el audio
@@ -158,25 +189,29 @@ class NumbloxGame {
 
     // Intervalo entre apariciones: fijo en Zen; en modo Velocidad se acorta con el tiempo jugado
     currentSpawnInterval() {
-        const base = CONFIG.GAME.SPAWN_INTERVAL;
+        const vowels = this.mode === 'vowels';
+        const base = vowels ? CONFIG.VOWELS.SPAWN_INTERVAL : CONFIG.GAME.SPAWN_INTERVAL;
         if (!this.speedMode) return base;
         const { STEP_SECONDS, FACTOR, MIN_INTERVAL } = CONFIG.GAME.SPEED_MODE;
+        const min = vowels ? CONFIG.VOWELS.MIN_INTERVAL : MIN_INTERVAL;
         const steps = this.elapsedMs / (STEP_SECONDS * 1000);
-        return Math.max(MIN_INTERVAL, base * Math.pow(FACTOR, steps));
+        return Math.max(min, base * Math.pow(FACTOR, steps));
     }
 
     scheduleSpawn() {
         clearTimeout(this.spawnTimer);
         this.spawnTimer = setTimeout(() => {
             if (!this.playing) return;
-            this.spawnBubble();
+            if (this.mode === 'vowels') this.spawnRow(); else this.spawnBubble();
             this.scheduleSpawn();
         }, this.currentSpawnInterval());
     }
 
     // Música: un solo audio en bucle, únicamente durante la partida
     syncMusic() {
-        const url = assets.getUrl(AUDIO_KEY);
+        // Modo Vocales: su propia música; si no hay, la misma del modo Números
+        const key = (this.selectedMode === 'vowels' && assets.getUrl(AUDIO_VOWELS_KEY)) ? AUDIO_VOWELS_KEY : AUDIO_KEY;
+        const url = assets.getUrl(key);
         if (url === this.musicUrl) return;
         this.stopMusic();
         this.musicUrl = url;
@@ -292,7 +327,19 @@ class NumbloxGame {
         this.digitBag = [];
         this.needTarget = false;
         this.missedSpawns = 0;
+        this.rowSeq = 0;
+        this.wordIndex = 0;
+        this.wordBag = [];
+        this.currentWord = null;
+        this.found = new Set();
         this.updateUI();
+    }
+
+    // Etiqueta y estilo del recuadro de la derecha según el modo
+    setupModeUI() {
+        const vowels = this.mode === 'vowels';
+        document.getElementById('cloudLabel').innerText = vowels ? 'Completa la palabra:' : 'Encuentra la respuesta:';
+        document.getElementById('targetEquation').classList.toggle('word-display', vowels);
     }
 
     // El número objetivo alterna entre dos tipos de turno:
@@ -383,6 +430,133 @@ class NumbloxGame {
         return this.digitBag.pop();
     }
 
+    /* ===================== MODO VOCALES ===================== */
+
+    // La lista de palabras se lee de Firestore solo cuando se entra a este modo (1 lectura)
+    ensureWordsSub() {
+        if (this.wordsSubscribed) return;
+        this.wordsSubscribed = true;
+        subscribeWords((list) => {
+            const clean = Array.from(new Set((list || []).map(normalizeWord).filter(isValidWord)));
+            this.words = clean.length ? clean : DEFAULT_WORDS.slice(); // Lista vacía = lista básica
+            this.wordBag = [];
+        });
+    }
+
+    // Palabras al azar: salen todas antes de repetir (y nunca la misma dos veces seguidas)
+    pickWord() {
+        if (this.wordBag.length === 0) {
+            const bag = this.words.slice();
+            for (let i = bag.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [bag[i], bag[j]] = [bag[j], bag[i]];
+            }
+            if (bag.length > 1 && bag[bag.length - 1] === this.currentWord) [bag[0], bag[bag.length - 1]] = [bag[bag.length - 1], bag[0]];
+            this.wordBag = bag;
+        }
+        return this.wordBag.pop();
+    }
+
+    startNewWord() {
+        this.currentWord = this.pickWord();
+        this.found = new Set();
+        this.wordIndex++;
+        this.renderWord();
+    }
+
+    neededVowels() {
+        return new Set(this.currentWord.split('').filter((ch) => VOWELS.includes(ch)));
+    }
+
+    // Palabra sin vocales; las ya encontradas se ven en su lugar ("C A S _")
+    renderWord() {
+        const html = this.currentWord.split('').map((ch) => {
+            if (!VOWELS.includes(ch)) return `<span class="w-letter">${ch}</span>`;
+            return this.found.has(ch) ? `<span class="w-found">${ch}</span>` : '<span class="w-blank">_</span>';
+        }).join('');
+        document.getElementById('targetEquation').innerHTML = html;
+    }
+
+    // Una fila = 5 burbujas a la vez, una por columna, con las 5 vocales en orden aleatorio.
+    // Así siempre hay en cada fila la vocal que se busca.
+    spawnRow() {
+        const lanes = CONFIG.GAME.LANES;
+        const letters = VOWELS.slice();
+        for (let i = letters.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [letters[i], letters[j]] = [letters[j], letters[i]];
+        }
+        const radius = Math.min(this.laneWidth * 0.35, 45);
+        const rowId = this.rowSeq++;
+        for (let lane = 0; lane < lanes; lane++) {
+            this.bubbles.push({
+                id: this.nextBubbleId++,
+                lane: lane,
+                x: (lane * this.laneWidth) + (this.laneWidth / 2),
+                y: -radius,
+                radius: radius,
+                value: letters[lane % letters.length],
+                settled: false,
+                kind: 'vowel',
+                rowId: rowId,
+                mark: null,        // null | 'correct' | 'wrong'
+                wrongWord: null    // Nº de palabra en la que se marcó como error
+            });
+        }
+    }
+
+    // Tocar una vocal NO la borra: solo la marca (✓ verde o ✗ roja)
+    handleVowelTap(b) {
+        const needed = this.neededVowels();
+        const v = b.value;
+
+        if (b.mark === 'correct') {          // Tocar una correcta la desmarca (por si cambió de idea)
+            b.mark = null;
+            this.found.delete(v);
+            this.renderWord();
+            return;
+        }
+
+        if (needed.has(v) && !this.found.has(v)) {   // Correcta (o un error anterior que ahora sí sirve)
+            b.mark = 'correct';
+            b.wrongWord = null;
+            this.found.add(v);
+            this.renderWord();
+            if (this.found.size === needed.size) this.completeWord();
+            return;
+        }
+
+        if (b.mark === 'wrong') return;                       // Ya estaba marcada como error
+        if (needed.has(v) && this.found.has(v)) return;       // Esa vocal ya está marcada en otra fila: se ignora, sin castigo
+
+        b.mark = 'wrong';                    // Error: se marca en rojo y no pasa al panel de la palabra
+        b.wrongWord = this.wordIndex;
+        this.wrongAnswers++;
+        if (CONFIG.VOWELS.WRONG_COSTS_LIFE) {
+            this.lives--;
+            this.updateUI();
+            if (this.lives <= 0) this.endGame();
+        }
+    }
+
+    // Palabra completa: se borran las filas donde hay vocales correctas, con UN solo sonido de pop.
+    // Se salvan los errores hechos con ESTA palabra; los de palabras anteriores se van con su fila.
+    completeWord() {
+        const rows = new Set(this.bubbles.filter((b) => b.mark === 'correct').map((b) => b.rowId));
+        const spared = (b) => b.mark === 'wrong' && b.wrongWord === this.wordIndex;
+        const removed = this.bubbles.filter((b) => rows.has(b.rowId) && !spared(b));
+
+        removed.forEach((b) => this.spawnExplosion(b));
+        this.playPopSound();
+        const gone = new Set(removed);
+        this.bubbles = this.bubbles.filter((b) => !gone.has(b));
+
+        this.score += CONFIG.VOWELS.POINTS_PER_VOWEL * this.neededVowels().size;
+        this.correctAnswers++;
+        this.updateUI();
+        this.startNewWord();
+    }
+
     spawnBubble() {
         const lane = Math.floor(Math.random() * CONFIG.GAME.LANES);
         const baseRadius = Math.min(this.laneWidth * 0.35, 45); // Ajuste dinámico por pantalla
@@ -442,38 +616,95 @@ class NumbloxGame {
         this.ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
     }
 
-    drawBubble(b) {
+    drawBubble(b, markedRows) {
+        const ctx = this.ctx;
         const r = b.radius * CONFIG.GFX.GLOBAL_SCALE;
-        const sprite = assets.getImage(`bubble${b.value}`);
+        const sprite = assets.getImage(b.kind === 'vowel' ? `vowel${b.value}` : `bubble${b.value}`);
 
-        // Con sprite personalizado: solo se dibuja la imagen (sin círculo ni texto)
+        // Halo verde: esta burbuja se borrará junto con su fila al completar la palabra
+        if (b.kind === 'vowel' && b.mark !== 'wrong' && markedRows && markedRows.has(b.rowId)) {
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, r + 7, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(46, 204, 113, 0.28)';
+            ctx.fill();
+        }
+
         if (sprite) {
+            // Con sprite personalizado: solo se dibuja la imagen (sin círculo ni texto)
             this.drawImageContain(sprite, b.x - r, b.y - r, r * 2, r * 2);
-            return;
-        }
-
-        // Diseño base: círculo blanco con borde negro y su número
-        this.ctx.beginPath();
-        if (CONFIG.GFX.SHAPE_TYPE === 'circle') {
-            this.ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
         } else {
-            this.ctx.rect(b.x - r, b.y - r, r * 2, r * 2);
+            // Diseño base: círculo blanco con borde negro y su número o letra
+            ctx.beginPath();
+            if (CONFIG.GFX.SHAPE_TYPE === 'circle') {
+                ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+            } else {
+                ctx.rect(b.x - r, b.y - r, r * 2, r * 2);
+            }
+
+            ctx.fillStyle = CONFIG.GFX.USE_NUMBER_COLORS
+                ? (CONFIG.GFX.COLORS[b.value] || CONFIG.GFX.DEFAULT_BUBBLE_FILL)
+                : CONFIG.GFX.DEFAULT_BUBBLE_FILL;
+            ctx.fill();
+
+            ctx.lineWidth = CONFIG.GFX.BORDER_WIDTH;
+            ctx.strokeStyle = CONFIG.GFX.DEFAULT_BUBBLE_BORDER;
+            ctx.stroke();
+
+            ctx.fillStyle = CONFIG.GFX.DEFAULT_TEXT_COLOR;
+            ctx.font = `bold ${r}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(b.value, b.x, b.y);
         }
 
-        this.ctx.fillStyle = CONFIG.GFX.USE_NUMBER_COLORS
-            ? (CONFIG.GFX.COLORS[b.value] || CONFIG.GFX.DEFAULT_BUBBLE_FILL)
-            : CONFIG.GFX.DEFAULT_BUBBLE_FILL;
-        this.ctx.fill();
+        if (b.mark) this.drawMark(b, r);
+    }
 
-        this.ctx.lineWidth = CONFIG.GFX.BORDER_WIDTH;
-        this.ctx.strokeStyle = CONFIG.GFX.DEFAULT_BUBBLE_BORDER;
-        this.ctx.stroke();
+    // Marca del modo Vocales: aro verde con palomita (correcta) o rojo con X (error)
+    drawMark(b, r) {
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        if (b.mark === 'correct') {
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, r + 2, 0, Math.PI * 2);
+            ctx.lineWidth = 6;
+            ctx.strokeStyle = '#2ecc71';
+            ctx.stroke();
 
-        this.ctx.fillStyle = CONFIG.GFX.DEFAULT_TEXT_COLOR;
-        this.ctx.font = `bold ${r}px sans-serif`;
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
-        this.ctx.fillText(b.value, b.x, b.y);
+            const bx = b.x + r * 0.72, by = b.y - r * 0.72, br = r * 0.34;   // Insignia con palomita
+            ctx.beginPath();
+            ctx.arc(bx, by, br, 0, Math.PI * 2);
+            ctx.fillStyle = '#2ecc71';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(bx - br * 0.5, by);
+            ctx.lineTo(bx - br * 0.1, by + br * 0.4);
+            ctx.lineTo(bx + br * 0.55, by - br * 0.35);
+            ctx.lineWidth = Math.max(3, br * 0.3);
+            ctx.strokeStyle = '#fff';
+            ctx.stroke();
+        } else {
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(231, 76, 60, 0.5)';
+            ctx.fill();
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = '#e74c3c';
+            ctx.stroke();
+
+            const d = r * 0.45;                                              // X grande
+            for (const [w, c] of [[11, '#fff'], [6, '#c0392b']]) {
+                ctx.beginPath();
+                ctx.moveTo(b.x - d, b.y - d); ctx.lineTo(b.x + d, b.y + d);
+                ctx.moveTo(b.x + d, b.y - d); ctx.lineTo(b.x - d, b.y + d);
+                ctx.lineWidth = w;
+                ctx.strokeStyle = c;
+                ctx.stroke();
+            }
+        }
+        ctx.restore();
     }
 
     draw() {
@@ -491,7 +722,9 @@ class NumbloxGame {
         }
 
         this.drawDangerLine();
-        for (let b of this.bubbles) this.drawBubble(b);
+        const markedRows = new Set();   // Filas con alguna vocal correcta (se borrarán al completar la palabra)
+        for (const b of this.bubbles) if (b.mark === 'correct') markedRows.add(b.rowId);
+        for (let b of this.bubbles) this.drawBubble(b, markedRows);
         this.drawExplosions();
         this.drawDangerCountdown();
     }
@@ -606,7 +839,8 @@ class NumbloxGame {
             }
 
             if (isHit) {
-                this.processHit(b, i);
+                if (this.mode === 'vowels') this.handleVowelTap(b);
+                else this.processHit(b, i);
                 break;
             }
         }
@@ -702,7 +936,7 @@ class NumbloxGame {
             : '¡Juego terminado!';
         document.getElementById('gameOverScore').innerText = `Puntos: ${this.score}`;
         document.getElementById('gameOverDetail').innerText =
-            `Aciertos: ${this.correctAnswers} · Errores: ${this.wrongAnswers}`;
+            `${this.mode === 'vowels' ? 'Palabras' : 'Aciertos'}: ${this.correctAnswers} · Errores: ${this.wrongAnswers}`;
         const panel = document.getElementById('gameOverPanel');
         panel.classList.add('open');
         panel.setAttribute('aria-hidden', 'false');

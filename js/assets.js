@@ -148,7 +148,7 @@ function applyPlayButton() {
 // Tarjetas de modos y de ritmo: con sprite, la tarjeta pasa a ser solo la imagen (con su proporción)
 const CARD_TARGETS = {
     cardClassic: 'btnModeClassic',
-    cardTimed: 'btnModeTimed',
+    cardVowels: 'btnModeVowels',
     cardChallenge: 'btnModeChallenge',
     cardZen: 'btnZen',
     cardSpeed: 'btnSpeed'

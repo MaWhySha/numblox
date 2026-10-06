@@ -34,10 +34,10 @@
                     <h3>Clásico</h3>
                     <p>Atrapa la respuesta correcta</p>
                 </button>
-                <button class="mode-card locked" id="btnModeTimed" aria-label="Contrarreloj (próximamente)" disabled>
-                    <span class="mode-icon">⏱️</span>
-                    <h3>Contrarreloj</h3>
-                    <p>Próximamente</p>
+                <button class="mode-card" id="btnModeVowels" aria-label="Modo Vocales">
+                    <span class="mode-icon">🔤</span>
+                    <h3>Vocales</h3>
+                    <p>Completa la palabra</p>
                 </button>
                 <button class="mode-card locked" id="btnModeChallenge" aria-label="Desafío (próximamente)" disabled>
                     <span class="mode-icon">🏆</span>
@@ -86,7 +86,7 @@
                 </div>
 
                 <div class="cloud-box">
-                    <span class="cloud-label">Encuentra la respuesta:</span>
+                    <span class="cloud-label" id="cloudLabel">Encuentra la respuesta:</span>
                     <span id="targetEquation">0 + 0 = ?</span>
                 </div>
             </div>
