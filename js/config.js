@@ -176,6 +176,11 @@ export const SPRITE_SLOTS = [
         hint: 'Recomendado 576×1080 · se centra y recorta sin deformar'
     },
     {
+        key: 'cloudBox', group: 'Modo Clásico', kind: 'sprite',
+        label: 'Recuadro de la ecuación o la palabra (todos los modos)',
+        hint: 'PNG transparente · recomendado 600×300 · conserva su proporción; el texto va encima, centrado'
+    },
+    {
         key: 'bgGameOver', group: 'Modo Clásico', kind: 'background',
         label: 'Fondo del panel al perder',
         hint: 'Recomendado 800×600 · se centra y recorta sin deformar (el texto y el botón van encima)'

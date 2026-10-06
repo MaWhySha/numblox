@@ -63,7 +63,6 @@ class NumbloxGame {
         this.currentWord = null;
         this.found = new Set();        // Vocales de la palabra ya marcadas como correctas
         this.wordIndex = 0;            // Nº de palabra (para saber qué errores son de la palabra actual)
-        this.rowSeq = 0;               // Identificador de cada fila de 5 burbujas
         this.celebrating = false;      // true durante la pausa en que la palabra completa se ilumina
         this.celebrateTimer = null;
 
@@ -333,7 +332,6 @@ class NumbloxGame {
         this.digitBag = [];
         this.needTarget = false;
         this.missedSpawns = 0;
-        this.rowSeq = 0;
         this.wordIndex = 0;
         this.wordBag = [];
         this.currentWord = null;
@@ -489,8 +487,23 @@ class NumbloxGame {
         document.getElementById('targetEquation').innerHTML = html;
     }
 
-    // Una fila = 5 burbujas a la vez, una por columna, con las 5 vocales en orden aleatorio.
-    // Así siempre hay en cada fila la vocal que se busca.
+    // Nivel (altura) de una burbuja en la pila. Una "fila" es lo que ve el niño: las burbujas
+    // alineadas en horizontal, aunque vengan de apariciones distintas.
+    levelOf(b) {
+        const r = b.radius * CONFIG.GFX.GLOBAL_SCALE;
+        const floor = this.canvas.height - r - 5;
+        return Math.round((floor - b.y) / (2 * r + 2));
+    }
+
+    // Niveles (filas visibles) que tienen alguna vocal marcada como correcta
+    markedLevels() {
+        const levels = new Set();
+        for (const b of this.bubbles) if (b.mark === 'correct') levels.add(this.levelOf(b));
+        return levels;
+    }
+
+    // Cada aparición = 5 burbujas a la vez, una por columna, con las 5 vocales en orden aleatorio.
+    // Así siempre hay en cada aparición la vocal que se busca.
     spawnRow() {
         const lanes = CONFIG.GAME.LANES;
         const letters = VOWELS.slice();
@@ -499,7 +512,6 @@ class NumbloxGame {
             [letters[i], letters[j]] = [letters[j], letters[i]];
         }
         const radius = Math.min(this.laneWidth * 0.35, 45);
-        const rowId = this.rowSeq++;
         for (let lane = 0; lane < lanes; lane++) {
             this.bubbles.push({
                 id: this.nextBubbleId++,
@@ -510,7 +522,6 @@ class NumbloxGame {
                 value: letters[lane % letters.length],
                 settled: false,
                 kind: 'vowel',
-                rowId: rowId,
                 mark: null         // null | 'correct' (verde) | 'wrong' (roja, solo hasta completar la palabra)
             });
         }
@@ -568,8 +579,10 @@ class NumbloxGame {
         if (!this.playing) return;
         document.getElementById('targetEquation').classList.remove('word-celebrate');
 
-        const rows = new Set(this.bubbles.filter((b) => b.mark === 'correct').map((b) => b.rowId));
-        const removed = this.bubbles.filter((b) => rows.has(b.rowId) && b.mark !== 'wrong');
+        // Se borran las filas VISIBLES donde hay una vocal correcta: todas las burbujas a esa altura
+        // (también las que antes estuvieron en rojo y ya volvieron a verse normales), salvo las rojas de ahora.
+        const levels = this.markedLevels();
+        const removed = this.bubbles.filter((b) => levels.has(this.levelOf(b)) && b.mark !== 'wrong');
         removed.forEach((b) => this.spawnExplosion(b));
         this.playPopSound();
         const gone = new Set(removed);
@@ -638,13 +651,13 @@ class NumbloxGame {
         this.ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
     }
 
-    drawBubble(b, markedRows) {
+    drawBubble(b, markedLevels) {
         const ctx = this.ctx;
         const r = b.radius * CONFIG.GFX.GLOBAL_SCALE;
         const sprite = assets.getImage(b.kind === 'vowel' ? `vowel${b.value}` : `bubble${b.value}`);
 
-        // Halo verde: esta burbuja se borrará junto con su fila al completar la palabra
-        if (b.kind === 'vowel' && b.mark !== 'wrong' && markedRows && markedRows.has(b.rowId)) {
+        // Halo verde: esta burbuja se borrará junto con su fila (la que se ve) al completar la palabra
+        if (b.kind === 'vowel' && b.mark !== 'wrong' && markedLevels && markedLevels.has(this.levelOf(b))) {
             ctx.beginPath();
             ctx.arc(b.x, b.y, r + 7, 0, Math.PI * 2);
             ctx.fillStyle = 'rgba(46, 204, 113, 0.28)';
@@ -735,9 +748,8 @@ class NumbloxGame {
         }
 
         this.drawDangerLine();
-        const markedRows = new Set();   // Filas con alguna vocal correcta (se borrarán al completar la palabra)
-        for (const b of this.bubbles) if (b.mark === 'correct') markedRows.add(b.rowId);
-        for (let b of this.bubbles) this.drawBubble(b, markedRows);
+        const markedLevels = this.bubbles.length ? this.markedLevels() : new Set(); // Filas que se borrarán
+        for (let b of this.bubbles) this.drawBubble(b, markedLevels);
         this.drawExplosions();
         this.drawDangerCountdown();
     }

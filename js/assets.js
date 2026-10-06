@@ -171,6 +171,22 @@ function applyCards() {
     }
 }
 
+// Recuadro de la ecuación o la palabra (igual en todos los modos): con sprite pasa a ser solo la imagen
+function applyCloudBox() {
+    const box = document.getElementById('cloudBox');
+    if (!box) return;
+    const img = assets.getImage('cloudBox');
+    if (img) {
+        box.classList.add('box-sprite');
+        box.style.backgroundImage = `url("${img.src}")`;
+        box.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
+    } else {
+        box.classList.remove('box-sprite');
+        box.style.backgroundImage = '';
+        box.style.aspectRatio = '';
+    }
+}
+
 // Logo del menú: cuadro blanco por defecto; con sprite se muestra la imagen con su proporción
 function applyLogo() {
     const box = document.getElementById('menuLogo');
@@ -195,6 +211,7 @@ export function bindDomSkins() {
         applyPlayButton();
         applyLogo();
         applyCards();
+        applyCloudBox();
     };
     applyAll();
     assets.subscribe(applyAll);

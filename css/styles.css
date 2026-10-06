@@ -443,6 +443,26 @@ body.booting #app {
     text-align: center;
 }
 
+/* Recuadro con sprite: solo se ve la imagen, con su proporción; el texto va encima, centrado */
+.cloud-box.box-sprite {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 8% 10%;
+    background-color: transparent;
+    background-size: 100% 100%;
+    background-position: center;
+    background-repeat: no-repeat;
+    border: none;
+    border-radius: 0;
+}
+
+.cloud-box.box-sprite .cloud-label,
+.cloud-box.box-sprite #targetEquation {
+    text-shadow: 0 0 6px #fff, 0 0 3px #fff;
+}
+
 .cloud-label {
     font-size: 0.9rem;
     color: #666;
