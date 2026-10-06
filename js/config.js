@@ -58,7 +58,8 @@ export const CONFIG = {
         SPAWN_INTERVAL: 6000,    // ms entre filas de 5 burbujas (Zen)
         MIN_INTERVAL: 2500,      // Límite en modo Velocidad (ms)
         WRONG_COSTS_LIFE: true,  // Marcar una vocal equivocada resta una vida (false = solo se marca con X)
-        POINTS_PER_VOWEL: 10     // Puntos por cada vocal de la palabra completada
+        POINTS_PER_VOWEL: 10,    // Puntos por cada vocal de la palabra completada
+        CELEBRATION_MS: 1800     // Pausa en la que la palabra completa se ilumina antes de borrar las filas
     },
     ASSETS: {
         COLLECTION: 'visuals',     // Firestore: visuals/<clave> (una imagen optimizada por documento)

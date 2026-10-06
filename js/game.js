@@ -64,6 +64,8 @@ class NumbloxGame {
         this.found = new Set();        // Vocales de la palabra ya marcadas como correctas
         this.wordIndex = 0;            // Nº de palabra (para saber qué errores son de la palabra actual)
         this.rowSeq = 0;               // Identificador de cada fila de 5 burbujas
+        this.celebrating = false;      // true durante la pausa en que la palabra completa se ilumina
+        this.celebrateTimer = null;
 
         this.init();
     }
@@ -161,6 +163,8 @@ class NumbloxGame {
     startGame(speedMode = false) {
         this.speedMode = speedMode;
         this.mode = this.selectedMode;
+        clearTimeout(this.celebrateTimer);
+        this.celebrating = false;
         this.hideGameOver();
         this.showScreen('gameScreen');
         this.playing = true;
@@ -202,7 +206,9 @@ class NumbloxGame {
         clearTimeout(this.spawnTimer);
         this.spawnTimer = setTimeout(() => {
             if (!this.playing) return;
-            if (this.mode === 'vowels') this.spawnRow(); else this.spawnBubble();
+            if (!this.celebrating) {    // Durante la celebración no aparecen filas nuevas
+                if (this.mode === 'vowels') this.spawnRow(); else this.spawnBubble();
+            }
             this.scheduleSpawn();
         }, this.currentSpawnInterval());
     }
@@ -339,7 +345,9 @@ class NumbloxGame {
     setupModeUI() {
         const vowels = this.mode === 'vowels';
         document.getElementById('cloudLabel').innerText = vowels ? 'Completa la palabra:' : 'Encuentra la respuesta:';
-        document.getElementById('targetEquation').classList.toggle('word-display', vowels);
+        const word = document.getElementById('targetEquation');
+        word.classList.toggle('word-display', vowels);
+        word.classList.remove('word-celebrate');
     }
 
     // El número objetivo alterna entre dos tipos de turno:
@@ -462,6 +470,10 @@ class NumbloxGame {
         this.found = new Set();
         this.wordIndex++;
         this.renderWord();
+        const el = document.getElementById('targetEquation');   // Entrada suave de la palabra nueva
+        el.classList.remove('word-enter');
+        void el.offsetWidth;
+        el.classList.add('word-enter');
     }
 
     neededVowels() {
@@ -499,14 +511,14 @@ class NumbloxGame {
                 settled: false,
                 kind: 'vowel',
                 rowId: rowId,
-                mark: null,        // null | 'correct' | 'wrong'
-                wrongWord: null    // Nº de palabra en la que se marcó como error
+                mark: null         // null | 'correct' (verde) | 'wrong' (roja, solo hasta completar la palabra)
             });
         }
     }
 
-    // Tocar una vocal NO la borra: solo la marca (✓ verde o ✗ roja)
+    // Tocar una vocal NO la borra: solo la marca (✓ verde, o roja si es un error)
     handleVowelTap(b) {
+        if (this.celebrating) return;   // Mientras la palabra se ilumina no se puede tocar nada
         const needed = this.neededVowels();
         const v = b.value;
 
@@ -517,20 +529,18 @@ class NumbloxGame {
             return;
         }
 
-        if (needed.has(v) && !this.found.has(v)) {   // Correcta (o un error anterior que ahora sí sirve)
+        if (needed.has(v) && !this.found.has(v)) {   // Correcta (o una roja que ahora sí sirve)
             b.mark = 'correct';
-            b.wrongWord = null;
             this.found.add(v);
             this.renderWord();
             if (this.found.size === needed.size) this.completeWord();
             return;
         }
 
-        if (b.mark === 'wrong') return;                       // Ya estaba marcada como error
+        if (b.mark === 'wrong') return;                       // Ya estaba en rojo
         if (needed.has(v) && this.found.has(v)) return;       // Esa vocal ya está marcada en otra fila: se ignora, sin castigo
 
-        b.mark = 'wrong';                    // Error: se marca en rojo y no pasa al panel de la palabra
-        b.wrongWord = this.wordIndex;
+        b.mark = 'wrong';                    // Error: se pone roja y no pasa al panel de la palabra
         this.wrongAnswers++;
         if (CONFIG.VOWELS.WRONG_COSTS_LIFE) {
             this.lives--;
@@ -539,21 +549,33 @@ class NumbloxGame {
         }
     }
 
-    // Palabra completa: se borran las filas donde hay vocales correctas, con UN solo sonido de pop.
-    // Se salvan los errores hechos con ESTA palabra; los de palabras anteriores se van con su fila.
+    // Palabra completa: primero se queda unos segundos iluminada (con efecto pop) en su panel
+    // para que el niño vea cuál era; después se borran las filas y aparece la siguiente.
     completeWord() {
-        const rows = new Set(this.bubbles.filter((b) => b.mark === 'correct').map((b) => b.rowId));
-        const spared = (b) => b.mark === 'wrong' && b.wrongWord === this.wordIndex;
-        const removed = this.bubbles.filter((b) => rows.has(b.rowId) && !spared(b));
+        this.celebrating = true;
+        this.score += CONFIG.VOWELS.POINTS_PER_VOWEL * this.neededVowels().size;
+        this.correctAnswers++;
+        this.updateUI();
+        document.getElementById('targetEquation').classList.add('word-celebrate');
+        clearTimeout(this.celebrateTimer);
+        this.celebrateTimer = setTimeout(() => this.finishWord(), CONFIG.VOWELS.CELEBRATION_MS);
+    }
 
+    // Se borran las filas con vocales correctas, con UN solo sonido de pop. Las vocales en rojo se
+    // quedan, pero vuelven a verse normales: ya se pueden usar en la palabra siguiente.
+    finishWord() {
+        this.celebrating = false;
+        if (!this.playing) return;
+        document.getElementById('targetEquation').classList.remove('word-celebrate');
+
+        const rows = new Set(this.bubbles.filter((b) => b.mark === 'correct').map((b) => b.rowId));
+        const removed = this.bubbles.filter((b) => rows.has(b.rowId) && b.mark !== 'wrong');
         removed.forEach((b) => this.spawnExplosion(b));
         this.playPopSound();
         const gone = new Set(removed);
         this.bubbles = this.bubbles.filter((b) => !gone.has(b));
+        this.bubbles.forEach((b) => { if (b.mark === 'wrong') b.mark = null; });
 
-        this.score += CONFIG.VOWELS.POINTS_PER_VOWEL * this.neededVowels().size;
-        this.correctAnswers++;
-        this.updateUI();
         this.startNewWord();
     }
 
@@ -660,7 +682,7 @@ class NumbloxGame {
         if (b.mark) this.drawMark(b, r);
     }
 
-    // Marca del modo Vocales: aro verde con palomita (correcta) o rojo con X (error)
+    // Marca del modo Vocales: aro verde con palomita (correcta) o burbuja roja (error)
     drawMark(b, r) {
         const ctx = this.ctx;
         ctx.save();
@@ -686,23 +708,14 @@ class NumbloxGame {
             ctx.strokeStyle = '#fff';
             ctx.stroke();
         } else {
+            // Error: la burbuja se pone roja (sin X)
             ctx.beginPath();
             ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(231, 76, 60, 0.5)';
+            ctx.fillStyle = 'rgba(231, 76, 60, 0.55)';
             ctx.fill();
             ctx.lineWidth = 5;
             ctx.strokeStyle = '#e74c3c';
             ctx.stroke();
-
-            const d = r * 0.45;                                              // X grande
-            for (const [w, c] of [[11, '#fff'], [6, '#c0392b']]) {
-                ctx.beginPath();
-                ctx.moveTo(b.x - d, b.y - d); ctx.lineTo(b.x + d, b.y + d);
-                ctx.moveTo(b.x + d, b.y - d); ctx.lineTo(b.x - d, b.y + d);
-                ctx.lineWidth = w;
-                ctx.strokeStyle = c;
-                ctx.stroke();
-            }
         }
         ctx.restore();
     }
@@ -756,6 +769,7 @@ class NumbloxGame {
 
     // Una burbuja apilada que toca la línea inicia la cuenta regresiva; si se libera, se reinicia
     updateDanger(dt) {
+        if (this.celebrating) return;   // La cuenta de la línea roja se congela mientras se celebra la palabra
         const scale = CONFIG.GFX.GLOBAL_SCALE;
         const touching = this.bubbles.some((b) => b.settled && (b.y - b.radius * scale) <= this.lineY);
 
@@ -916,6 +930,8 @@ class NumbloxGame {
     endGame(reason) {
         this.playing = false;
         clearTimeout(this.spawnTimer);
+        clearTimeout(this.celebrateTimer);
+        this.celebrating = false;
         cancelAnimationFrame(this.animationFrame);
         this.stopMusic();
 
